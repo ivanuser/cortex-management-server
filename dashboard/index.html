@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CortexOS Management</title>
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #12121a;
+  --surface2: #1a1a2e;
+  --border: #2a2a3e;
+  --text: #e0e0e8;
+  --text-dim: #8888a0;
+  --accent: #6c5ce7;
+  --accent-glow: rgba(108, 92, 231, 0.3);
+  --green: #00e676;
+  --yellow: #ffd740;
+  --red: #ff5252;
+  --blue: #448aff;
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+a { color: var(--accent); text-decoration: none; }
+button {
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+}
+input, select {
+  font-family: inherit;
+  font-size: 14px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+input:focus, select:focus { border-color: var(--accent); }
+
+/* ─── Login ─────────────────────────── */
+#login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 40px;
+  width: 100%;
+  max-width: 400px;
+}
+.login-card h1 {
+  text-align: center;
+  margin-bottom: 8px;
+  font-size: 24px;
+}
+.login-card .subtitle {
+  text-align: center;
+  color: var(--text-dim);
+  margin-bottom: 28px;
+  font-size: 14px;
+}
+.login-card .logo {
+  text-align: center;
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+.form-group { margin-bottom: 16px; }
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.form-group input { width: 100%; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  transition: all 0.2s;
+}
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  width: 100%;
+}
+.btn-primary:hover { opacity: 0.9; box-shadow: 0 0 20px var(--accent-glow); }
+.btn-danger { background: var(--red); color: white; }
+.btn-danger:hover { opacity: 0.85; }
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+.error-msg {
+  color: var(--red);
+  font-size: 13px;
+  margin-top: 8px;
+  text-align: center;
+  min-height: 18px;
+}
+
+/* ─── Layout ────────────────────────── */
+#app { display: none; }
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar-brand {
+  font-size: 18px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.topbar-user {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.tabs {
+  display: flex;
+  gap: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  overflow-x: auto;
+}
+.tab {
+  padding: 12px 20px;
+  font-size: 14px;
+  color: var(--text-dim);
+  background: none;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--text); }
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+/* ─── Fleet Grid ────────────────────── */
+.server-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+.server-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.server-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 20px var(--accent-glow);
+  transform: translateY(-2px);
+}
+.server-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.server-name {
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.status-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.status-dot.offline { background: var(--red); box-shadow: 0 0 8px var(--red); }
+.status-dot.unknown { background: var(--yellow); }
+.server-ip { color: var(--text-dim); font-size: 13px; }
+.server-agent {
+  color: var(--text-dim);
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.stat-bars { display: flex; flex-direction: column; gap: 8px; }
+.stat-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.stat-label {
+  width: 40px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.stat-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--surface2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.stat-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+.stat-fill.cpu { background: var(--accent); }
+.stat-fill.ram { background: var(--blue); }
+.stat-fill.disk { background: var(--green); }
+.stat-fill.warn { background: var(--yellow); }
+.stat-fill.crit { background: var(--red); }
+.stat-val {
+  width: 40px;
+  text-align: right;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.no-data {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 13px;
+}
+
+/* ─── Detail View ───────────────────── */
+.detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.detail-back:hover { color: var(--accent); }
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.detail-title {
+  font-size: 28px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.detail-actions { display: flex; gap: 10px; }
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.info-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+}
+.info-label { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.info-value { font-size: 18px; font-weight: 600; }
+.health-chart {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-top: 20px;
+}
+.health-chart h3 { margin-bottom: 16px; }
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 120px;
+  padding-top: 4px;
+}
+.chart-bar {
+  flex: 1;
+  min-width: 4px;
+  max-width: 12px;
+  border-radius: 2px 2px 0 0;
+  transition: height 0.3s;
+}
+.chart-bar.cpu { background: var(--accent); }
+.chart-bar.ram { background: var(--blue); }
+
+/* ─── Add Server / Forms ────────────── */
+.form-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  max-width: 600px;
+}
+.form-card h2 { margin-bottom: 20px; }
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.token-display {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-top: 16px;
+  word-break: break-all;
+  font-family: monospace;
+  font-size: 13px;
+}
+.copy-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 8px;
+}
+.copy-btn:hover { border-color: var(--accent); }
+
+/* ─── Table ─────────────────────────── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.data-table th {
+  text-align: left;
+  padding: 10px 14px;
+  color: var(--text-dim);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.data-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.data-table tr:hover td { background: var(--surface2); }
+.table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  overflow-x: auto;
+}
+
+/* ─── Badges ────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-admin { background: rgba(108,92,231,0.2); color: var(--accent); }
+.badge-viewer { background: rgba(136,136,160,0.2); color: var(--text-dim); }
+.badge-active { background: rgba(0,230,118,0.2); color: var(--green); }
+.badge-inactive { background: rgba(255,82,82,0.2); color: var(--red); }
+
+/* ─── Section Header ────────────────── */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.section-header h2 { font-size: 22px; }
+
+/* ─── Tokens List ───────────────────── */
+.token-list { margin-top: 28px; }
+.token-list h3 { margin-bottom: 12px; }
+
+/* ─── Settings Grid ─────────────────── */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 20px;
+}
+
+/* ─── Responsive ────────────────────── */
+@media (max-width: 640px) {
+  .topbar { padding: 10px 16px; }
+  .tabs { padding: 0 12px; }
+  .content { padding: 16px; }
+  .form-row { grid-template-columns: 1fr; }
+  .server-grid { grid-template-columns: 1fr; }
+  .info-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ─── Toast ─────────────────────────── */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 20px;
+  font-size: 13px;
+  animation: slideIn 0.3s ease;
+  max-width: 360px;
+}
+.toast.success { border-left: 3px solid var(--green); }
+.toast.error { border-left: 3px solid var(--red); }
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+</style>
+</head>
+<body>
+
+<!-- ─── Login Page ─────────────────── -->
+<div id="login-page">
+  <div class="login-card">
+    <div class="logo">🧠</div>
+    <h1>CortexOS</h1>
+    <p class="subtitle">Fleet Management</p>
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" id="login-user" placeholder="admin" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="login-pass" placeholder="••••••" autocomplete="current-password">
+    </div>
+    <div class="form-group" id="totp-group" style="display:none">
+      <label>2FA Code</label>
+      <input type="text" id="login-totp" placeholder="123456" autocomplete="one-time-code">
+    </div>
+    <button class="btn btn-primary" onclick="doLogin()">Sign In</button>
+    <div class="error-msg" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ─── App ────────────────────────── -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-brand">🧠 CortexOS Management</div>
+    <div class="topbar-right">
+      <span class="topbar-user" id="topbar-user"></span>
+      <button class="btn btn-outline btn-sm" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="fleet">🏠 Fleet</button>
+    <button class="tab" data-tab="add">➕ Add Server</button>
+    <button class="tab" data-tab="users">👤 Users</button>
+    <button class="tab" data-tab="settings">⚙️ Settings</button>
+    <button class="tab" data-tab="audit">📋 Audit Log</button>
+  </div>
+  <div class="content" id="content"></div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+// ─── State ──────────────────────────
+let token = localStorage.getItem('cortex_token');
+let currentUser = null;
+let currentTab = 'fleet';
+let serverDetail = null;
+
+const API = '/api/v1';
+
+// ─── Helpers ────────────────────────
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(API + path, { ...opts, headers });
+  const data = await res.json();
+  if (res.status === 401 && path !== '/auth/login') {
+    doLogout();
+    throw new Error('Session expired');
+  }
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return 'Never';
+  const diff = Date.now() - new Date(dateStr + 'Z').getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function barColor(pct) {
+  if (pct > 90) return 'crit';
+  if (pct > 75) return 'warn';
+  return '';
+}
+
+function esc(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Auth ───────────────────────────
+async function doLogin() {
+  const username = document.getElementById('login-user').value.trim();
+  const password = document.getElementById('login-pass').value;
+  const totpCode = document.getElementById('login-totp').value.trim();
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+
+  if (!username || !password) { errEl.textContent = 'Enter username and password'; return; }
+
+  try {
+    const body = { username, password };
+    if (totpCode) body.totpCode = totpCode;
+    const data = await api('/auth/login', { method: 'POST', body: JSON.stringify(body) });
+    if (data.requires2FA) {
+      document.getElementById('totp-group').style.display = 'block';
+      document.getElementById('login-totp').focus();
+      return;
+    }
+    token = data.token;
+    currentUser = data.user;
+    localStorage.setItem('cortex_token', token);
+    showApp();
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+}
+
+function doLogout() {
+  token = null;
+  currentUser = null;
+  localStorage.removeItem('cortex_token');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-page').style.display = 'flex';
+  document.getElementById('login-pass').value = '';
+  document.getElementById('login-totp').value = '';
+  document.getElementById('totp-group').style.display = 'none';
+}
+
+// Enter key login
+document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('login-totp').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+// ─── App Init ───────────────────────
+async function showApp() {
+  try {
+    currentUser = await api('/auth/me');
+  } catch { doLogout(); return; }
+
+  document.getElementById('login-page').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('topbar-user').textContent = `${currentUser.username} (${currentUser.role})`;
+
+  // Hide admin tabs for non-admin
+  document.querySelectorAll('.tab').forEach(t => {
+    if (['users', 'audit'].includes(t.dataset.tab) && currentUser.role !== 'admin') {
+      t.style.display = 'none';
+    }
+  });
+
+  renderTab();
+}
+
+// ─── Tabs ───────────────────────────
+document.getElementById('tabs').addEventListener('click', e => {
+  if (!e.target.classList.contains('tab')) return;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  e.target.classList.add('active');
+  currentTab = e.target.dataset.tab;
+  serverDetail = null;
+  renderTab();
+});
+
+function renderTab() {
+  if (serverDetail) { renderServerDetail(); return; }
+  const renderers = { fleet: renderFleet, add: renderAdd, users: renderUsers, settings: renderSettings, audit: renderAudit };
+  (renderers[currentTab] || renderers.fleet)();
+}
+
+// ─── Fleet Tab ──────────────────────
+async function renderFleet() {
+  const el = document.getElementById('content');
+  el.innerHTML = '<p style="color:var(--text-dim)">Loading fleet...</p>';
+
+  try {
+    const servers = await api('/servers');
+    if (servers.length === 0) {
+      el.innerHTML = `
+        <div class="section-header"><h2>🏠 Fleet</h2></div>
+        <p class="no-data">No servers registered yet. Use the "Add Server" tab to get started.</p>`;
+      return;
+    }
+
+    let html = `<div class="section-header"><h2>🏠 Fleet</h2>
+      <span style="color:var(--text-dim);font-size:13px">${servers.length} server${servers.length !== 1 ? 's' : ''}</span>
+    </div><div class="server-grid">`;
+
+    for (const s of servers) {
+      const cpuPct = s.cpu_percent ?? null;
+      const memPct = (s.memory_used_mb && s.memory_total_mb) ? Math.round(s.memory_used_mb / s.memory_total_mb * 100) : null;
+      const diskPct = s.disk_percent ?? null;
+
+      html += `<div class="server-card" onclick="viewServer('${s.id}')">
+        <div class="server-header">
+          <div class="server-name">
+            <span class="status-dot ${s.status}"></span>
+            ${esc(s.name)}
+          </div>
+          <span class="server-ip">${esc(s.ip_address || s.hostname || '')}</span>
+        </div>
+        ${s.agent_name ? `<div class="server-agent">🤖 ${esc(s.agent_name)}</div>` : ''}
+        <div class="stat-bars">
+          ${cpuPct !== null ? `<div class="stat-row">
+            <span class="stat-label">CPU</span>
+            <div class="stat-bar"><div class="stat-fill cpu ${barColor(cpuPct)}" style="width:${cpuPct}%"></div></div>
+            <span class="stat-val">${Math.round(cpuPct)}%</span>
+          </div>` : ''}
+          ${memPct !== null ? `<div class="stat-row">
+            <span class="stat-label">RAM</span>
+            <div class="stat-bar"><div class="stat-fill ram ${barColor(memPct)}" style="width:${memPct}%"></div></div>
+            <span class="stat-val">${memPct}%</span>
+          </div>` : ''}
+          ${diskPct !== null ? `<div class="stat-row">
+            <span class="stat-label">Disk</span>
+            <div class="stat-bar"><div class="stat-fill disk ${barColor(diskPct)}" style="width:${diskPct}%"></div></div>
+            <span class="stat-val">${Math.round(diskPct)}%</span>
+          </div>` : ''}
+          ${cpuPct === null && memPct === null && diskPct === null ? '<span class="no-data">No health data yet</span>' : ''}
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--text-dim)">Last seen: ${timeAgo(s.last_seen)}</div>
+      </div>`;
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`;
+  }
+}
+
+// ─── Server Detail ──────────────────
+async function viewServer(id) {
+  serverDetail = id;
+  renderServerDetail();
+}
+
+async function renderServerDetail() {
+  const el = document.getElementById('content');
+  el.innerHTML = '<p style="color:var(--text-dim)">Loading...</p>';
+
+  try {
+    const s = await api(`/servers/${serverDetail}`);
+    const health = await api(`/servers/${serverDetail}/health?limit=60`);
+
+    const cpuPct = s.cpu_percent ?? 0;
+    const memPct = (s.memory_used_mb && s.memory_total_mb) ? Math.round(s.memory_used_mb / s.memory_total_mb * 100) : 0;
+    const diskPct = s.disk_percent ?? 0;
+
+    let html = `
+      <div class="detail-back" onclick="serverDetail=null;renderTab()">← Back to Fleet</div>
+      <div class="detail-header">
+        <div class="detail-title">
+          <span class="status-dot ${s.status}"></span>
+          ${esc(s.name)}
+        </div>
+        <div class="detail-actions">
+          ${s.gateway_url ? `<a href="${esc(s.gateway_url)}" target="_blank" class="btn btn-outline btn-sm">💬 Open Dashboard</a>` : ''}
+          <button class="btn btn-danger btn-sm" onclick="removeServer('${s.id}','${esc(s.name)}')">🗑️ Remove</button>
+        </div>
+      </div>
+      <div class="info-grid">
+        <div class="info-card"><div class="info-label">Status</div><div class="info-value">${s.status}</div></div>
+        <div class="info-card"><div class="info-label">IP Address</div><div class="info-value">${esc(s.ip_address || '—')}</div></div>
+        <div class="info-card"><div class="info-label">Hostname</div><div class="info-value">${esc(s.hostname || '—')}</div></div>
+        <div class="info-card"><div class="info-label">Agent</div><div class="info-value">${esc(s.agent_name || '—')}</div></div>
+        <div class="info-card"><div class="info-label">CPU</div><div class="info-value">${cpuPct ? Math.round(cpuPct) + '%' : '—'}</div></div>
+        <div class="info-card">
+          <div class="info-label">Memory</div>
+          <div class="info-value">${s.memory_used_mb ? Math.round(s.memory_used_mb) + ' / ' + Math.round(s.memory_total_mb) + ' MB' : '—'}</div>
+        </div>
+        <div class="info-card">
+          <div class="info-label">Disk</div>
+          <div class="info-value">${s.disk_used_gb ? s.disk_used_gb.toFixed(1) + ' / ' + s.disk_total_gb.toFixed(1) + ' GB' : '—'}</div>
+        </div>
+        <div class="info-card"><div class="info-label">Uptime</div><div class="info-value">${esc(s.uptime || '—')}</div></div>
+        <div class="info-card"><div class="info-label">Registered</div><div class="info-value">${timeAgo(s.registered_at)}</div></div>
+        <div class="info-card"><div class="info-label">Last Seen</div><div class="info-value">${timeAgo(s.last_seen)}</div></div>
+      </div>`;
+
+    // Health history chart
+    if (health.length > 0) {
+      const reversed = [...health].reverse();
+      html += `<div class="health-chart">
+        <h3>CPU History (last ${reversed.length} readings)</h3>
+        <div class="chart-bars">`;
+      for (const h of reversed) {
+        const pct = h.cpu_percent || 0;
+        const color = pct > 90 ? 'var(--red)' : pct > 75 ? 'var(--yellow)' : 'var(--accent)';
+        html += `<div class="chart-bar" style="height:${Math.max(pct, 2)}%;background:${color}" title="${Math.round(pct)}% — ${h.recorded_at}"></div>`;
+      }
+      html += '</div></div>';
+
+      html += `<div class="health-chart" style="margin-top:16px">
+        <h3>Memory History</h3>
+        <div class="chart-bars">`;
+      for (const h of reversed) {
+        const pct = (h.memory_used_mb && h.memory_total_mb) ? (h.memory_used_mb / h.memory_total_mb * 100) : 0;
+        const color = pct > 90 ? 'var(--red)' : pct > 75 ? 'var(--yellow)' : 'var(--blue)';
+        html += `<div class="chart-bar" style="height:${Math.max(pct, 2)}%;background:${color}" title="${Math.round(pct)}% — ${h.recorded_at}"></div>`;
+      }
+      html += '</div></div>';
+    }
+
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`;
+  }
+}
+
+async function removeServer(id, name) {
+  if (!confirm(`Remove server "${name}"? This deletes all health data.`)) return;
+  try {
+    await api(`/servers/${id}`, { method: 'DELETE' });
+    toast(`Server "${name}" removed`);
+    serverDetail = null;
+    renderTab();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Add Server Tab ─────────────────
+async function renderAdd() {
+  const el = document.getElementById('content');
+
+  let tokensHtml = '';
+  try {
+    const tokens = await api('/tokens');
+    if (tokens.length > 0) {
+      tokensHtml = `<div class="token-list"><h3>Active Tokens</h3>
+        <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Server Name</th><th>Token</th><th>Created</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>`;
+      for (const t of tokens) {
+        const expired = new Date(t.expires_at) < new Date();
+        const used = !!t.used_at;
+        const status = used ? '<span style="color:var(--green)">Used</span>' : expired ? '<span style="color:var(--red)">Expired</span>' : '<span style="color:var(--yellow)">Pending</span>';
+        tokensHtml += `<tr>
+          <td>${esc(t.server_name || '—')}</td>
+          <td style="font-family:monospace;font-size:11px">${t.token.slice(0, 16)}...</td>
+          <td>${timeAgo(t.created_at)}</td>
+          <td>${timeAgo(t.expires_at)}</td>
+          <td>${status}</td>
+          <td><button class="btn btn-outline btn-sm" onclick="revokeToken('${t.id}')">Revoke</button></td>
+        </tr>`;
+      }
+      tokensHtml += '</tbody></table></div></div>';
+    }
+  } catch {}
+
+  el.innerHTML = `
+    <div class="section-header"><h2>➕ Add Server</h2></div>
+    <div class="form-card">
+      <h3>Generate Install Token</h3>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:20px">
+        Create a one-time token that a CortexOS Server installer can use to register with this management server.
+      </p>
+      <div class="form-group">
+        <label>Server Name (optional)</label>
+        <input type="text" id="token-name" placeholder="e.g., prod-west-1">
+      </div>
+      <div class="form-group">
+        <label>Expires In (hours)</label>
+        <input type="number" id="token-hours" value="24" min="1" max="720">
+      </div>
+      <button class="btn btn-primary" style="width:auto" onclick="generateToken()">Generate Token</button>
+      <div id="token-result"></div>
+    </div>
+
+    <div style="margin-top:28px" class="form-card">
+      <h3>Manual Registration</h3>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:20px">
+        Add a server manually by entering its details.
+      </p>
+      <div class="form-group">
+        <label>Server Name *</label>
+        <input type="text" id="manual-name" placeholder="My Server">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>IP Address</label>
+          <input type="text" id="manual-ip" placeholder="192.168.1.100">
+        </div>
+        <div class="form-group">
+          <label>Hostname</label>
+          <input type="text" id="manual-host" placeholder="server.local">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Gateway URL</label>
+        <input type="text" id="manual-gateway" placeholder="http://192.168.1.100:18789">
+      </div>
+      <div class="form-group">
+        <label>Agent Name</label>
+        <input type="text" id="manual-agent" placeholder="e.g., Ranaye">
+      </div>
+      <button class="btn btn-primary" style="width:auto" onclick="manualAdd()">Add Server</button>
+    </div>
+    ${tokensHtml}`;
+}
+
+async function generateToken() {
+  const name = document.getElementById('token-name').value.trim();
+  const hours = document.getElementById('token-hours').value;
+  const resultEl = document.getElementById('token-result');
+
+  try {
+    const data = await api('/tokens', {
+      method: 'POST',
+      body: JSON.stringify({ server_name: name, expires_hours: hours })
+    });
+    resultEl.innerHTML = `
+      <div class="token-display">
+        <strong>Install Token:</strong><br>${data.token}
+      </div>
+      <button class="copy-btn" onclick="navigator.clipboard.writeText('${data.token}');toast('Token copied!')">📋 Copy Token</button>
+      <div class="token-display" style="margin-top:12px">
+        <strong>Install Command:</strong><br>
+        curl -sSL https://YOUR_MANAGEMENT_URL/install.sh | MGMT_TOKEN=${data.token} bash
+      </div>`;
+    toast('Token generated');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function manualAdd() {
+  const name = document.getElementById('manual-name').value.trim();
+  if (!name) { toast('Server name required', 'error'); return; }
+
+  try {
+    await api('/servers', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        ip_address: document.getElementById('manual-ip').value.trim(),
+        hostname: document.getElementById('manual-host').value.trim(),
+        gateway_url: document.getElementById('manual-gateway').value.trim(),
+        agent_name: document.getElementById('manual-agent').value.trim()
+      })
+    });
+    toast(`Server "${name}" added`);
+    document.querySelectorAll('.tab')[0].click();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function revokeToken(id) {
+  if (!confirm('Revoke this token?')) return;
+  try {
+    await api(`/tokens/${id}`, { method: 'DELETE' });
+    toast('Token revoked');
+    renderAdd();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Users Tab ──────────────────────
+async function renderUsers() {
+  const el = document.getElementById('content');
+  el.innerHTML = '<p style="color:var(--text-dim)">Loading...</p>';
+
+  try {
+    const users = await api('/auth/users');
+    let html = `<div class="section-header"><h2>👤 Users</h2></div>
+      <div class="form-card" style="margin-bottom:24px">
+        <h3>Add User</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="new-user-name" placeholder="username">
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="new-user-pass" placeholder="password">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Role</label>
+          <select id="new-user-role">
+            <option value="viewer">Viewer</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" style="width:auto" onclick="createUser()">Create User</button>
+      </div>
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Username</th><th>Role</th><th>2FA</th><th>Status</th><th>Last Login</th><th>Created</th><th></th></tr></thead><tbody>`;
+
+    for (const u of users) {
+      html += `<tr>
+        <td><strong>${esc(u.username)}</strong></td>
+        <td><span class="badge badge-${u.role}">${u.role}</span></td>
+        <td>${u.totp_enabled ? '🔐' : '—'}</td>
+        <td><span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? 'Active' : 'Inactive'}</span></td>
+        <td>${timeAgo(u.last_login)}</td>
+        <td>${timeAgo(u.created_at)}</td>
+        <td>${u.id !== currentUser.id ? `<button class="btn btn-outline btn-sm" onclick="deleteUser('${u.id}','${esc(u.username)}')">Deactivate</button>` : ''}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`; }
+}
+
+async function createUser() {
+  const username = document.getElementById('new-user-name').value.trim();
+  const password = document.getElementById('new-user-pass').value;
+  const role = document.getElementById('new-user-role').value;
+  if (!username || !password) { toast('Fill in all fields', 'error'); return; }
+  try {
+    await api('/auth/users', { method: 'POST', body: JSON.stringify({ username, password, role }) });
+    toast(`User "${username}" created`);
+    renderUsers();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteUser(id, name) {
+  if (!confirm(`Deactivate user "${name}"?`)) return;
+  try {
+    await api(`/auth/users/${id}`, { method: 'DELETE' });
+    toast(`User "${name}" deactivated`);
+    renderUsers();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Settings Tab ───────────────────
+async function renderSettings() {
+  const el = document.getElementById('content');
+  const me = await api('/auth/me');
+
+  el.innerHTML = `
+    <div class="section-header"><h2>⚙️ Settings</h2></div>
+    <div class="settings-grid">
+      <div class="form-card">
+        <h3>Change Password</h3>
+        <div class="form-group">
+          <label>Current Password</label>
+          <input type="password" id="cur-pass">
+        </div>
+        <div class="form-group">
+          <label>New Password</label>
+          <input type="password" id="new-pass">
+        </div>
+        <div class="form-group">
+          <label>Confirm New Password</label>
+          <input type="password" id="confirm-pass">
+        </div>
+        <button class="btn btn-primary" style="width:auto" onclick="changePassword()">Update Password</button>
+      </div>
+
+      <div class="form-card">
+        <h3>Two-Factor Authentication</h3>
+        <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">
+          ${me.totp_enabled ? '🔐 2FA is <strong style="color:var(--green)">enabled</strong>' : '2FA is <strong>not enabled</strong>'}
+        </p>
+        ${me.totp_enabled
+          ? `<button class="btn btn-danger" style="width:auto" onclick="disable2FA()">Disable 2FA</button>`
+          : `<button class="btn btn-primary" style="width:auto" onclick="setup2FA()">Enable 2FA</button>`}
+        <div id="2fa-setup"></div>
+      </div>
+
+      <div class="form-card">
+        <h3>Server Info</h3>
+        <div style="font-size:13px;color:var(--text-dim);line-height:2">
+          <div>Version: <strong style="color:var(--text)">0.3.0</strong></div>
+          <div>User: <strong style="color:var(--text)">${esc(me.username)}</strong></div>
+          <div>Role: <strong style="color:var(--text)">${esc(me.role)}</strong></div>
+          <div>Account Created: <strong style="color:var(--text)">${me.created_at}</strong></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function changePassword() {
+  const cur = document.getElementById('cur-pass').value;
+  const np = document.getElementById('new-pass').value;
+  const cp = document.getElementById('confirm-pass').value;
+  if (!cur || !np) { toast('Fill in all fields', 'error'); return; }
+  if (np !== cp) { toast('Passwords do not match', 'error'); return; }
+  try {
+    await api('/auth/password', { method: 'PUT', body: JSON.stringify({ currentPassword: cur, newPassword: np }) });
+    toast('Password updated');
+    document.getElementById('cur-pass').value = '';
+    document.getElementById('new-pass').value = '';
+    document.getElementById('confirm-pass').value = '';
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function setup2FA() {
+  try {
+    const data = await api('/auth/2fa/setup', { method: 'POST' });
+    document.getElementById('2fa-setup').innerHTML = `
+      <div style="margin-top:16px">
+        <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px">
+          Scan this URI in your authenticator app, or enter the secret manually:
+        </p>
+        <div class="token-display" style="font-size:12px">${esc(data.otpauthUrl)}</div>
+        <div style="margin-top:8px;font-size:12px;color:var(--text-dim)">Secret: <code>${esc(data.secret)}</code></div>
+        <div class="form-group" style="margin-top:16px">
+          <label>Enter code from app to verify</label>
+          <input type="text" id="verify-2fa-code" placeholder="123456">
+        </div>
+        <button class="btn btn-primary" style="width:auto" onclick="verify2FA()">Verify & Enable</button>
+      </div>`;
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function verify2FA() {
+  const code = document.getElementById('verify-2fa-code').value.trim();
+  if (!code) { toast('Enter the code', 'error'); return; }
+  try {
+    await api('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ code }) });
+    toast('2FA enabled!');
+    renderSettings();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function disable2FA() {
+  if (!confirm('Disable 2FA?')) return;
+  try {
+    await api('/auth/2fa/disable', { method: 'POST' });
+    toast('2FA disabled');
+    renderSettings();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Audit Log Tab ──────────────────
+async function renderAudit() {
+  const el = document.getElementById('content');
+  el.innerHTML = '<p style="color:var(--text-dim)">Loading...</p>';
+
+  try {
+    const logs = await api('/audit?limit=200');
+    let html = `<div class="section-header"><h2>📋 Audit Log</h2></div>`;
+
+    if (logs.length === 0) {
+      html += '<p class="no-data">No audit events yet.</p>';
+    } else {
+      html += `<div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Details</th><th>Server</th><th>IP</th></tr></thead><tbody>`;
+      for (const l of logs) {
+        html += `<tr>
+          <td style="white-space:nowrap">${timeAgo(l.created_at)}</td>
+          <td>${esc(l.username || '—')}</td>
+          <td><strong>${esc(l.action)}</strong></td>
+          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${esc(l.details || '')}</td>
+          <td>${esc(l.server_name || '')}</td>
+          <td style="font-family:monospace;font-size:11px">${esc(l.ip_address || '')}</td>
+        </tr>`;
+      }
+      html += '</tbody></table></div>';
+    }
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`; }
+}
+
+// ─── Auto-refresh fleet ─────────────
+setInterval(() => {
+  if (currentTab === 'fleet' && !serverDetail && document.visibilityState === 'visible') {
+    renderFleet();
+  }
+}, 30000);
+
+// ─── Boot ───────────────────────────
+if (token) { showApp(); }
+</script>
+</body>
+</html>
