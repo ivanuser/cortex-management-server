@@ -733,7 +733,7 @@ async function renderServerDetail() {
           ${esc(s.name)}
         </div>
         <div class="detail-actions">
-          ${s.gateway_url ? `<a href="${esc(s.gateway_url)}" target="_blank" class="btn btn-outline btn-sm">💬 Open Dashboard</a>` : ''}
+          ${s.gateway_url ? `<a href="${esc(s.gateway_url)}${s.gateway_url.includes('?')?'&':'?'}token=${encodeURIComponent(s.gateway_token||'')}" target="_blank" class="btn btn-outline btn-sm">💬 Open Dashboard</a>` : ''}
           <button class="btn btn-danger btn-sm" onclick="removeServer('${s.id}','${esc(s.name)}')">🗑️ Remove</button>
         </div>
       </div>
