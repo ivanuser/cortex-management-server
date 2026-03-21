@@ -49,6 +49,35 @@ app.get('/dashboard/*', (_req, res) => {
   res.sendFile(path.join(dashboardDir, 'index.html'));
 });
 
+// ─── Install Script Endpoint ────────────────────────────────
+// Serves the CortexOS Server installer with management URL pre-configured
+app.get('/install.sh', async (req, res) => {
+  const mgmtToken = req.query.token || '';
+  const mgmtUrl = `${req.protocol}://${req.get('host')}`;
+  
+  try {
+    // Try to fetch latest installer from GitHub
+    const response = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/install.sh');
+    if (!response.ok) throw new Error('Failed to fetch installer');
+    let script = await response.text();
+    
+    // Inject management server config at the top
+    const mgmtConfig = `
+# ─── Management Server Configuration (auto-injected) ────────
+MANAGEMENT_URL="${mgmtUrl}"
+MANAGEMENT_TOKEN="${mgmtToken}"
+# ─────────────────────────────────────────────────────────────
+`;
+    script = script.replace('set -euo pipefail', 'set -euo pipefail\n' + mgmtConfig);
+    
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(script);
+  } catch (err) {
+    // Fallback: redirect to GitHub raw
+    res.redirect(`https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/install.sh`);
+  }
+});
+
 // ─── 404 Handler ────────────────────────────────────────────
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
