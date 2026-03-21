@@ -155,9 +155,20 @@ router.post('/2fa/verify', authenticate, (req, res) => {
 
 /**
  * POST /api/v1/auth/2fa/disable
- * Disable 2FA
+ * Disable 2FA (requires current password)
  */
 router.post('/2fa/disable', authenticate, (req, res) => {
+  const { password } = req.body || {};
+
+  if (!password) {
+    return res.status(400).json({ error: 'Current password required to disable 2FA' });
+  }
+
+  const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+  if (!bcrypt.compareSync(password, user.password_hash)) {
+    return res.status(401).json({ error: 'Incorrect password' });
+  }
+
   db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL WHERE id = ?').run(req.user.id);
   audit(req.user.id, '2fa_disabled', '2FA disabled', req.ip);
   res.json({ message: '2FA disabled' });
@@ -199,6 +210,40 @@ router.post('/users', authenticate, requireRole('admin'), (req, res) => {
   audit(req.user.id, 'user_created', `Created user: ${username} (${userRole})`, req.ip);
 
   res.status(201).json({ id, username, role: userRole });
+});
+
+/**
+ * PUT /api/v1/auth/users/:id (admin only) — update user role/active status
+ */
+router.put('/users/:id', authenticate, requireRole('admin'), (req, res) => {
+  const { role, active } = req.body;
+
+  const user = db.prepare('SELECT id, username, role, active FROM users WHERE id = ?').get(req.params.id);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  // Don't allow admins to demote themselves
+  if (req.params.id === req.user.id && role && role !== 'admin') {
+    return res.status(400).json({ error: 'Cannot change your own role' });
+  }
+
+  const validRoles = ['admin', 'operator', 'viewer'];
+  if (role && !validRoles.includes(role)) {
+    return res.status(400).json({ error: `Invalid role. Must be one of: ${validRoles.join(', ')}` });
+  }
+
+  const newRole = role || user.role;
+  const newActive = active !== undefined ? (active ? 1 : 0) : user.active;
+
+  db.prepare('UPDATE users SET role = ?, active = ? WHERE id = ?').run(newRole, newActive, req.params.id);
+
+  const changes = [];
+  if (role && role !== user.role) changes.push(`role: ${user.role} → ${role}`);
+  if (active !== undefined && (active ? 1 : 0) !== user.active) changes.push(`active: ${!!user.active} → ${!!active}`);
+  audit(req.user.id, 'user_modified', `Modified user ${user.username}: ${changes.join(', ')}`, req.ip);
+
+  res.json({ message: 'User updated', id: user.id, username: user.username, role: newRole, active: !!newActive });
 });
 
 /**

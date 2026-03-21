@@ -82,7 +82,7 @@ router.post('/servers', authenticate, requireRole('admin'), (req, res) => {
 });
 
 /**
- * DELETE /api/v1/servers/:id — remove a server
+ * DELETE /api/v1/servers/:id — remove a server and all associated data
  */
 router.delete('/servers/:id', authenticate, requireRole('admin'), (req, res) => {
   const server = db.prepare('SELECT name FROM servers WHERE id = ?').get(req.params.id);
@@ -90,10 +90,16 @@ router.delete('/servers/:id', authenticate, requireRole('admin'), (req, res) => 
     return res.status(404).json({ error: 'Server not found' });
   }
 
+  // Explicitly clean up associated data (also handled by ON DELETE CASCADE)
+  const healthDeleted = db.prepare('DELETE FROM health_snapshots WHERE server_id = ?').run(req.params.id);
+  const backupsDeleted = db.prepare('DELETE FROM agent_backups WHERE server_id = ?').run(req.params.id);
   db.prepare('DELETE FROM servers WHERE id = ?').run(req.params.id);
-  audit(req.user.id, 'server_removed', `Removed server: ${server.name}`, req.ip);
 
-  res.json({ message: 'Server removed' });
+  audit(req.user.id, 'server_removed',
+    `Removed server: ${server.name} (${healthDeleted.changes} health snapshots, ${backupsDeleted.changes} backups cleaned up)`,
+    req.ip);
+
+  res.json({ message: 'Server removed', cleaned: { health_snapshots: healthDeleted.changes, backups: backupsDeleted.changes } });
 });
 
 /**
@@ -213,20 +219,244 @@ router.post('/servers/register', (req, res) => {
 // ─── Audit Log ──────────────────────────────────────────────
 
 /**
- * GET /api/v1/audit — audit log
+ * GET /api/v1/audit — audit log with filtering and pagination
  */
 router.get('/audit', authenticate, requireRole('admin'), (req, res) => {
-  const limit = parseInt(req.query.limit) || 100;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 500);
+  const offset = parseInt(req.query.offset) || 0;
+  const action = req.query.action || null;
+
+  let where = '';
+  const params = [];
+
+  if (action) {
+    where = 'WHERE a.action = ?';
+    params.push(action);
+  }
+
+  params.push(limit, offset);
+
   const logs = db.prepare(`
     SELECT a.*, u.username, s.name AS server_name
     FROM audit_log a
     LEFT JOIN users u ON u.id = a.user_id
     LEFT JOIN servers s ON s.id = a.server_id
+    ${where}
     ORDER BY a.created_at DESC
-    LIMIT ?
-  `).all(limit);
+    LIMIT ? OFFSET ?
+  `).all(...params);
 
-  res.json(logs);
+  // Get total count for pagination
+  const countParams = action ? [action] : [];
+  const total = db.prepare(`
+    SELECT COUNT(*) as count FROM audit_log a ${where}
+  `).get(...countParams);
+
+  // Get distinct action types for filtering
+  const actions = db.prepare(
+    'SELECT DISTINCT action FROM audit_log ORDER BY action'
+  ).all().map(r => r.action);
+
+  res.json({ logs, total: total.count, limit, offset, actions });
+});
+
+// ─── Centralized Backups ────────────────────────────────────
+
+// Ensure agent_backups table exists
+db.exec(`
+  CREATE TABLE IF NOT EXISTS agent_backups (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    created_by TEXT,
+    file_count INTEGER DEFAULT 0,
+    total_size INTEGER DEFAULT 0,
+    files_json TEXT DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'pending',
+    error TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT,
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_backups_server_id ON agent_backups(server_id);
+`);
+
+/**
+ * POST /api/v1/servers/:id/backup — trigger backup of server agent state
+ */
+router.post('/servers/:id/backup', authenticate, requireRole('admin', 'operator'), async (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) {
+    return res.status(404).json({ error: 'Server not found' });
+  }
+
+  if (!server.gateway_url || !server.gateway_token) {
+    return res.status(400).json({ error: 'Server has no gateway configured' });
+  }
+
+  const backupId = crypto.randomUUID();
+  db.prepare(
+    'INSERT INTO agent_backups (id, server_id, created_by, status) VALUES (?, ?, ?, ?)'
+  ).run(backupId, server.id, req.user.id, 'in_progress');
+
+  audit(req.user.id, 'backup_started', `Backup started for server: ${server.name}`, req.ip, server.id);
+
+  // Start async backup
+  performBackup(backupId, server, req.user.id, req.ip).catch(err => {
+    console.error(`Backup ${backupId} failed:`, err.message);
+  });
+
+  res.status(202).json({ id: backupId, status: 'in_progress', message: 'Backup started' });
+});
+
+/**
+ * Perform the actual backup — fetch workspace files from server gateway
+ */
+async function performBackup(backupId, server, userId, ip) {
+  const baseUrl = server.gateway_url.replace(/\/+$/, '');
+  const headers = {
+    'Authorization': `Bearer ${server.gateway_token}`,
+    'Content-Type': 'application/json'
+  };
+
+  try {
+    // Try to list workspace files via the gateway API
+    const listRes = await fetch(`${baseUrl}/api/agents/main/files`, {
+      headers,
+      signal: AbortSignal.timeout(30000)
+    });
+
+    let files = [];
+    let totalSize = 0;
+
+    if (listRes.ok) {
+      const fileList = await listRes.json();
+      const fileEntries = Array.isArray(fileList) ? fileList : (fileList.files || []);
+
+      // Fetch each file's content
+      for (const f of fileEntries) {
+        try {
+          const filePath = typeof f === 'string' ? f : (f.path || f.name);
+          if (!filePath) continue;
+
+          const fileRes = await fetch(`${baseUrl}/api/agents/main/files/${encodeURIComponent(filePath)}`, {
+            headers,
+            signal: AbortSignal.timeout(15000)
+          });
+
+          if (fileRes.ok) {
+            const content = await fileRes.text();
+            files.push({
+              path: filePath,
+              size: content.length,
+              content: content
+            });
+            totalSize += content.length;
+          }
+        } catch (fileErr) {
+          // Skip individual file errors
+          console.error(`Backup file fetch error:`, fileErr.message);
+        }
+      }
+    } else {
+      // Fallback: try fetching known workspace files directly
+      const knownFiles = ['SOUL.md', 'AGENTS.md', 'USER.md', 'TOOLS.md', 'IDENTITY.md', 'HEARTBEAT.md', 'MEMORY.md'];
+      for (const fname of knownFiles) {
+        try {
+          const fileRes = await fetch(`${baseUrl}/api/agents/main/files/${encodeURIComponent(fname)}`, {
+            headers,
+            signal: AbortSignal.timeout(10000)
+          });
+          if (fileRes.ok) {
+            const content = await fileRes.text();
+            files.push({ path: fname, size: content.length, content });
+            totalSize += content.length;
+          }
+        } catch {}
+      }
+    }
+
+    // Update backup record
+    db.prepare(`
+      UPDATE agent_backups 
+      SET status = 'completed', file_count = ?, total_size = ?, files_json = ?, completed_at = datetime('now')
+      WHERE id = ?
+    `).run(files.length, totalSize, JSON.stringify(files), backupId);
+
+    audit(userId, 'backup_completed', `Backup completed for server: ${server.name} (${files.length} files, ${totalSize} bytes)`, ip, server.id);
+
+  } catch (err) {
+    db.prepare(`
+      UPDATE agent_backups SET status = 'failed', error = ?, completed_at = datetime('now') WHERE id = ?
+    `).run(err.message, backupId);
+
+    audit(userId, 'backup_failed', `Backup failed for server: ${server.name} — ${err.message}`, ip, server.id);
+  }
+}
+
+/**
+ * GET /api/v1/servers/:id/backups — list backups for a server
+ */
+router.get('/servers/:id/backups', authenticate, (req, res) => {
+  const server = db.prepare('SELECT id FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) {
+    return res.status(404).json({ error: 'Server not found' });
+  }
+
+  const backups = db.prepare(`
+    SELECT b.id, b.server_id, b.file_count, b.total_size, b.status, b.error, b.created_at, b.completed_at,
+           u.username AS created_by_username
+    FROM agent_backups b
+    LEFT JOIN users u ON u.id = b.created_by
+    WHERE b.server_id = ?
+    ORDER BY b.created_at DESC
+    LIMIT 50
+  `).all(req.params.id);
+
+  res.json(backups);
+});
+
+/**
+ * GET /api/v1/backups/:id — download a specific backup
+ */
+router.get('/backups/:id', authenticate, (req, res) => {
+  const backup = db.prepare(
+    'SELECT * FROM agent_backups WHERE id = ?'
+  ).get(req.params.id);
+
+  if (!backup) {
+    return res.status(404).json({ error: 'Backup not found' });
+  }
+
+  if (backup.status !== 'completed') {
+    return res.status(400).json({ error: `Backup is ${backup.status}`, status: backup.status });
+  }
+
+  // Return as JSON with file contents
+  const files = JSON.parse(backup.files_json || '[]');
+  res.json({
+    id: backup.id,
+    server_id: backup.server_id,
+    file_count: backup.file_count,
+    total_size: backup.total_size,
+    created_at: backup.created_at,
+    completed_at: backup.completed_at,
+    files: files.map(f => ({ path: f.path, size: f.size, content: f.content }))
+  });
+});
+
+/**
+ * DELETE /api/v1/backups/:id — delete a backup
+ */
+router.delete('/backups/:id', authenticate, requireRole('admin'), (req, res) => {
+  const backup = db.prepare('SELECT id FROM agent_backups WHERE id = ?').get(req.params.id);
+  if (!backup) {
+    return res.status(404).json({ error: 'Backup not found' });
+  }
+
+  db.prepare('DELETE FROM agent_backups WHERE id = ?').run(req.params.id);
+  audit(req.user.id, 'backup_deleted', 'Backup deleted', req.ip);
+  res.json({ message: 'Backup deleted' });
 });
 
 export default router;

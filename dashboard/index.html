@@ -580,9 +580,65 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   font-size: 0.65rem; font-weight: 600;
 }
 .badge-admin { background: rgba(108,92,231,0.2); color: var(--accent); }
+.badge-operator { background: rgba(84,160,255,0.2); color: var(--blue); }
 .badge-viewer { background: rgba(136,136,160,0.2); color: var(--text-dim); }
 .badge-active { background: rgba(0,184,148,0.2); color: var(--green); }
 .badge-inactive { background: rgba(255,107,107,0.2); color: var(--red); }
+
+/* ─── Modal ─────────────────────────── */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 10000; animation: fadeIn 0.15s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 1.75rem; max-width: 480px; width: 90%;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+}
+.modal h3 { margin-bottom: 1rem; font-size: 1.05rem; }
+.modal .form-group { margin-bottom: 1rem; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }
+.btn-danger {
+  padding: 0.6rem 1.25rem; background: rgba(255,107,107,0.15); border: 1px solid rgba(255,107,107,0.3);
+  border-radius: var(--radius); color: var(--red); font-weight: 600; cursor: pointer; transition: all 0.2s;
+}
+.btn-danger:hover { background: rgba(255,107,107,0.25); }
+.btn-secondary {
+  padding: 0.6rem 1.25rem; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-dim); font-weight: 500; cursor: pointer; transition: all 0.2s;
+}
+.btn-secondary:hover { border-color: var(--text-dim); color: var(--text); }
+
+/* ─── Filter Bar ────────────────────── */
+.filter-bar {
+  display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap;
+}
+.filter-bar select {
+  padding: 0.45rem 0.75rem; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-size: 0.78rem;
+}
+
+/* ─── Backup Cards ──────────────────── */
+.backup-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); margin-bottom: 0.5rem; transition: all 0.15s;
+}
+.backup-item:hover { border-color: var(--border-glow); }
+.backup-info { display: flex; flex-direction: column; gap: 0.2rem; }
+.backup-info .title { font-size: 0.82rem; font-weight: 600; }
+.backup-info .meta { font-size: 0.7rem; color: var(--text-muted); }
+.backup-actions { display: flex; gap: 0.5rem; }
+.backup-status {
+  display: inline-block; padding: 0.15rem 0.5rem; border-radius: 12px;
+  font-size: 0.6rem; font-weight: 600;
+}
+.backup-status.completed { background: var(--green-bg); color: var(--green); }
+.backup-status.in_progress { background: var(--yellow-bg); color: var(--yellow); }
+.backup-status.failed { background: var(--red-bg); color: var(--red); }
 
 /* ─── Settings Grid ─────────────────── */
 .settings-grid {
@@ -952,11 +1008,13 @@ async function showApp() {
   $('app').classList.add('active');
   $('topbar-user').textContent = `${currentUser.username} (${currentUser.role})`;
 
-  // Hide admin nav for non-admin
+  // Hide admin-only nav items for non-admin users
   if (currentUser.role !== 'admin') {
     $('nav-users').style.display = 'none';
     $('nav-audit').style.display = 'none';
   }
+  // Show nav items for operator+admin (they're shown by default; only hide for viewers)
+  // Viewers can see fleet (read-only) but not add servers
 
   // Restore selected server from localStorage
   const savedServer = localStorage.getItem('cortex_mgmt_selected_server');
@@ -1830,12 +1888,23 @@ async function renderFleet() {
 }
 
 async function removeServer(id, name) {
-  if (!confirm(`Remove server "${name}"? This deletes all health data.`)) return;
+  if (!confirm(`Remove server "${name}"? This deletes all health data and backups.`)) return;
   try {
     await api(`/servers/${id}`, { method: 'DELETE' });
     toast(`Server "${name}" removed`);
     if (selectedServer?.id === id) deselectServer();
     renderFleet();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function confirmRemoveServer(id, name) {
+  const typed = $('confirm-remove-name')?.value.trim();
+  if (typed !== name) { toast('Server name does not match', 'error'); return; }
+  try {
+    const result = await api(`/servers/${id}`, { method: 'DELETE' });
+    toast(`Server "${name}" removed (${result.cleaned?.health_snapshots || 0} health snapshots, ${result.cleaned?.backups || 0} backups cleaned up)`);
+    document.querySelector('.modal-overlay')?.remove();
+    deselectServer();
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -1901,10 +1970,46 @@ async function renderHealth() {
       html += '<div class="form-card" style="margin-top:1rem"><p class="no-data">No health history data available yet. The health poller will collect data periodically.</p></div>';
     }
 
+    // Backups section
+    const backupsHtml = await renderBackups(s.id);
+    html += backupsHtml;
+
+    // Server removal (admin only)
+    if (currentUser.role === 'admin') {
+      html += `<div style="margin-top:2rem;padding:1.25rem;background:var(--surface);border:1px solid rgba(255,107,107,0.2);border-radius:var(--radius)">
+        <h4 style="color:var(--red);margin-bottom:0.5rem">⚠️ Danger Zone</h4>
+        <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:0.75rem">Remove this server from the fleet. This deletes all health data and backups.</p>
+        <button class="btn-danger" onclick="removeServerFromHealth('${s.id}','${esc(s.name)}')">Remove Server</button>
+      </div>`;
+    }
+
     el.innerHTML = html;
   } catch (e) {
     el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`;
   }
+}
+
+async function removeServerFromHealth(id, name) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3 style="color:var(--red)">⚠️ Remove Server</h3>
+      <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:1rem">
+        Are you sure you want to remove <strong style="color:var(--text)">${esc(name)}</strong> from the fleet?
+        This will permanently delete all health snapshots and backups for this server.
+      </p>
+      <p style="font-size:0.78rem;color:var(--text-muted)">Type the server name to confirm:</p>
+      <div class="form-group" style="margin-top:0.5rem">
+        <input type="text" id="confirm-remove-name" placeholder="${esc(name)}">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-danger" onclick="confirmRemoveServer('${id}','${esc(name)}')">Remove Server</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2068,7 +2173,7 @@ async function renderUsers() {
   try {
     const users = await api('/auth/users');
     let html = `
-      <div class="section-header"><h2>👤 <span>Users</span></h2></div>
+      <div class="section-header"><h2>👤 <span>Users</span> & Roles</h2></div>
       <div class="form-card" style="margin-bottom:1.5rem">
         <h3>Add User</h3>
         <div class="form-row">
@@ -2078,35 +2183,90 @@ async function renderUsers() {
           </div>
           <div class="form-group">
             <label>Password</label>
-            <input type="password" id="new-user-pass" placeholder="password">
+            <input type="password" id="new-user-pass" placeholder="password (min 6 chars)">
           </div>
         </div>
         <div class="form-group">
           <label>Role</label>
-          <select id="new-user-role">
-            <option value="viewer">Viewer</option>
-            <option value="admin">Admin</option>
+          <select id="new-user-role" style="width:100%;padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text)">
+            <option value="viewer">👁️ Viewer — read-only access</option>
+            <option value="operator">🔧 Operator — manage servers, no user mgmt</option>
+            <option value="admin">👑 Admin — full access</option>
           </select>
         </div>
         <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="createUser()">Create User</button>
       </div>
       <div class="table-wrap"><table class="data-table">
-        <thead><tr><th>Username</th><th>Role</th><th>2FA</th><th>Status</th><th>Last Login</th><th>Created</th><th></th></tr></thead><tbody>`;
+        <thead><tr><th>Username</th><th>Role</th><th>2FA</th><th>Status</th><th>Last Login</th><th>Created</th><th>Actions</th></tr></thead><tbody>`;
 
     for (const u of users) {
+      const isSelf = u.id === currentUser.id;
+      const actions = [];
+      if (!isSelf) {
+        actions.push(`<button class="btn-ghost" style="font-size:0.7rem" onclick="editUserModal('${u.id}','${esc(u.username)}','${u.role}',${u.active})">Edit</button>`);
+        actions.push(`<button class="btn-ghost" style="font-size:0.7rem;color:var(--red)" onclick="deleteUser('${u.id}','${esc(u.username)}')">Delete</button>`);
+      }
       html += `<tr>
-        <td><strong>${esc(u.username)}</strong></td>
+        <td><strong>${esc(u.username)}</strong>${isSelf ? ' <span style="font-size:0.65rem;color:var(--accent-light)">(you)</span>' : ''}</td>
         <td><span class="badge badge-${u.role}">${u.role}</span></td>
         <td>${u.totp_enabled ? '🔐' : '—'}</td>
         <td><span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? 'Active' : 'Inactive'}</span></td>
         <td>${timeAgo(u.last_login)}</td>
         <td>${timeAgo(u.created_at)}</td>
-        <td>${u.id !== currentUser.id ? `<button class="btn-ghost" style="font-size:0.7rem" onclick="deleteUser('${u.id}','${esc(u.username)}')">Deactivate</button>` : ''}</td>
+        <td style="white-space:nowrap">${actions.join(' ')}</td>
       </tr>`;
     }
     html += '</tbody></table></div>';
+
+    html += `<div style="margin-top:1.5rem;padding:1rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+      <h4 style="margin-bottom:0.75rem;font-size:0.85rem">Role Permissions</h4>
+      <div style="font-size:0.78rem;color:var(--text-dim);line-height:2">
+        <div>👑 <strong style="color:var(--accent-light)">Admin</strong> — Full access: manage servers, users, tokens, audit log, backups</div>
+        <div>🔧 <strong style="color:var(--blue)">Operator</strong> — Manage servers and backups; cannot manage users or view audit log</div>
+        <div>👁️ <strong style="color:var(--text-dim)">Viewer</strong> — Read-only: view fleet status and server details</div>
+      </div>
+    </div>`;
     el.innerHTML = html;
   } catch (e) { el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`; }
+}
+
+function editUserModal(id, username, currentRole, isActive) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Edit User: ${esc(username)}</h3>
+      <div class="form-group">
+        <label>Role</label>
+        <select id="edit-user-role" style="width:100%;padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text)">
+          <option value="viewer" ${currentRole === 'viewer' ? 'selected' : ''}>👁️ Viewer</option>
+          <option value="operator" ${currentRole === 'operator' ? 'selected' : ''}>🔧 Operator</option>
+          <option value="admin" ${currentRole === 'admin' ? 'selected' : ''}>👑 Admin</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+          <input type="checkbox" id="edit-user-active" ${isActive ? 'checked' : ''} style="width:auto;padding:0"> Active
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="saveUserEdit('${id}','${esc(username)}')">Save Changes</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function saveUserEdit(id, username) {
+  const role = $('edit-user-role').value;
+  const active = $('edit-user-active').checked;
+  try {
+    await api(`/auth/users/${id}`, { method: 'PUT', body: JSON.stringify({ role, active }) });
+    toast(`User "${username}" updated`);
+    document.querySelector('.modal-overlay')?.remove();
+    renderUsers();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function createUser() {
@@ -2114,15 +2274,18 @@ async function createUser() {
   const password = $('new-user-pass').value;
   const role = $('new-user-role').value;
   if (!username || !password) { toast('Fill in all fields', 'error'); return; }
+  if (password.length < 6) { toast('Password must be at least 6 characters', 'error'); return; }
   try {
     await api('/auth/users', { method: 'POST', body: JSON.stringify({ username, password, role }) });
     toast(`User "${username}" created`);
+    $('new-user-name').value = '';
+    $('new-user-pass').value = '';
     renderUsers();
   } catch (e) { toast(e.message, 'error'); }
 }
 
 async function deleteUser(id, name) {
-  if (!confirm(`Deactivate user "${name}"?`)) return;
+  if (!confirm(`Deactivate user "${name}"? They will not be able to log in.`)) return;
   try {
     await api(`/auth/users/${id}`, { method: 'DELETE' });
     toast(`User "${name}" deactivated`);
@@ -2222,10 +2385,33 @@ async function verify2FA() {
 }
 
 async function disable2FA() {
-  if (!confirm('Disable 2FA?')) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Disable 2FA</h3>
+      <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:1rem">Enter your current password to disable two-factor authentication.</p>
+      <div class="form-group">
+        <label>Current Password</label>
+        <input type="password" id="disable-2fa-pass" placeholder="Your current password">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-danger" onclick="confirmDisable2FA()">Disable 2FA</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  setTimeout(() => $('disable-2fa-pass')?.focus(), 100);
+}
+
+async function confirmDisable2FA() {
+  const password = $('disable-2fa-pass')?.value;
+  if (!password) { toast('Password required', 'error'); return; }
   try {
-    await api('/auth/2fa/disable', { method: 'POST' });
+    await api('/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ password }) });
     toast('2FA disabled');
+    document.querySelector('.modal-overlay')?.remove();
     renderSettings();
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -2233,33 +2419,165 @@ async function disable2FA() {
 // ═══════════════════════════════════════════════════════════
 // AUDIT LOG PAGE
 // ═══════════════════════════════════════════════════════════
-async function renderAudit() {
+let auditOffset = 0;
+let auditFilter = '';
+const AUDIT_PAGE_SIZE = 50;
+
+async function renderAudit(append) {
   const el = $('audit-content');
-  el.innerHTML = '<p style="color:var(--text-dim)">Loading...</p>';
+  if (!append) {
+    auditOffset = 0;
+    el.innerHTML = '<p style="color:var(--text-dim)">Loading...</p>';
+  }
 
   try {
-    const logs = await api('/audit?limit=200');
-    let html = `<div class="section-header"><h2>📋 <span>Audit</span> Log</h2></div>`;
+    let url = `/audit?limit=${AUDIT_PAGE_SIZE}&offset=${auditOffset}`;
+    if (auditFilter) url += `&action=${encodeURIComponent(auditFilter)}`;
+    const data = await api(url);
+    const { logs, total, actions } = data;
 
-    if (logs.length === 0) {
-      html += '<p class="no-data">No audit events yet.</p>';
-    } else {
-      html += `<div class="table-wrap"><table class="data-table">
-        <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Details</th><th>Server</th><th>IP</th></tr></thead><tbody>`;
-      for (const l of logs) {
-        html += `<tr>
-          <td style="white-space:nowrap">${timeAgo(l.created_at)}</td>
-          <td>${esc(l.username || '—')}</td>
-          <td><strong>${esc(l.action)}</strong></td>
-          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${esc(l.details || '')}</td>
-          <td>${esc(l.server_name || '')}</td>
-          <td style="font-family:'JetBrains Mono',monospace;font-size:0.7rem">${esc(l.ip_address || '')}</td>
-        </tr>`;
+    if (!append) {
+      let html = `<div class="section-header"><h2>📋 <span>Audit</span> Log</h2>
+        <span style="color:var(--text-muted);font-size:0.78rem">${total} total events</span>
+      </div>
+      <div class="filter-bar">
+        <label style="font-size:0.72rem;color:var(--text-muted)">Filter by action:</label>
+        <select id="audit-action-filter" onchange="auditFilter=this.value;renderAudit()">
+          <option value="">All Actions</option>
+          ${(actions || []).map(a => `<option value="${a}" ${a === auditFilter ? 'selected' : ''}>${a}</option>`).join('')}
+        </select>
+      </div>`;
+
+      if (logs.length === 0) {
+        html += '<p class="no-data">No audit events found.</p>';
+      } else {
+        html += `<div class="table-wrap"><table class="data-table">
+          <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Details</th><th>Server</th><th>IP</th></tr></thead>
+          <tbody id="audit-tbody">`;
+        for (const l of logs) {
+          html += auditRow(l);
+        }
+        html += '</tbody></table></div>';
+        if (auditOffset + AUDIT_PAGE_SIZE < total) {
+          html += `<div style="text-align:center;margin-top:1rem">
+            <button class="btn-skills" id="audit-load-more" onclick="loadMoreAudit()">Load More (${total - auditOffset - AUDIT_PAGE_SIZE} remaining)</button>
+          </div>`;
+        }
       }
-      html += '</tbody></table></div>';
+      el.innerHTML = html;
+    } else {
+      const tbody = $('audit-tbody');
+      if (tbody) {
+        for (const l of logs) {
+          tbody.insertAdjacentHTML('beforeend', auditRow(l));
+        }
+      }
+      const btn = $('audit-load-more');
+      if (btn) {
+        const remaining = total - auditOffset - AUDIT_PAGE_SIZE;
+        if (remaining <= 0) btn.parentElement.remove();
+        else btn.textContent = `Load More (${remaining} remaining)`;
+      }
     }
-    el.innerHTML = html;
-  } catch (e) { el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`; }
+  } catch (e) {
+    if (!append) el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`;
+    else toast(e.message, 'error');
+  }
+}
+
+function auditRow(l) {
+  const actionColors = {
+    login: 'var(--green)', logout: 'var(--text-dim)',
+    server_added: 'var(--blue)', server_removed: 'var(--red)', server_registered: 'var(--green)',
+    token_created: 'var(--yellow)', token_revoked: 'var(--red)',
+    user_created: 'var(--blue)', user_modified: 'var(--yellow)', user_deleted: 'var(--red)',
+    password_change: 'var(--yellow)', '2fa_enabled': 'var(--green)', '2fa_disabled': 'var(--red)',
+    backup_started: 'var(--blue)', backup_completed: 'var(--green)', backup_failed: 'var(--red)'
+  };
+  const color = actionColors[l.action] || 'var(--text)';
+  return `<tr>
+    <td style="white-space:nowrap" title="${esc(l.created_at)}">${timeAgo(l.created_at)}</td>
+    <td>${esc(l.username || '—')}</td>
+    <td><strong style="color:${color}">${esc(l.action)}</strong></td>
+    <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis" title="${esc(l.details || '')}">${esc(l.details || '')}</td>
+    <td>${esc(l.server_name || '')}</td>
+    <td style="font-family:'JetBrains Mono',monospace;font-size:0.7rem">${esc(l.ip_address || '')}</td>
+  </tr>`;
+}
+
+function loadMoreAudit() {
+  auditOffset += AUDIT_PAGE_SIZE;
+  renderAudit(true);
+}
+
+// ═══════════════════════════════════════════════════════════
+// BACKUPS
+// ═══════════════════════════════════════════════════════════
+async function renderBackups(serverId) {
+  if (!serverId && !selectedServer) return '';
+  const sid = serverId || selectedServer.id;
+  try {
+    const backups = await api(`/servers/${sid}/backups`);
+    if (backups.length === 0) {
+      return `<div class="form-card" style="margin-top:1.5rem">
+        <h3>💾 Backups</h3>
+        <p class="no-data">No backups yet.</p>
+        <button class="btn-primary" style="width:auto;padding:0.5rem 1.25rem;margin-top:0.75rem" onclick="triggerBackup('${sid}')">Backup Now</button>
+      </div>`;
+    }
+    let html = `<div class="form-card" style="margin-top:1.5rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3>💾 Backups</h3>
+        <button class="btn-skills primary" style="font-size:0.75rem" onclick="triggerBackup('${sid}')">Backup Now</button>
+      </div>`;
+    for (const b of backups) {
+      const sizeStr = b.total_size > 1024 ? (b.total_size / 1024).toFixed(1) + ' KB' : b.total_size + ' B';
+      html += `<div class="backup-item">
+        <div class="backup-info">
+          <div class="title"><span class="backup-status ${b.status}">${b.status}</span> ${b.file_count} files (${sizeStr})</div>
+          <div class="meta">${timeAgo(b.created_at)} by ${esc(b.created_by_username || '—')}</div>
+        </div>
+        <div class="backup-actions">
+          ${b.status === 'completed' ? `<button class="btn-ghost" style="font-size:0.7rem" onclick="downloadBackup('${b.id}')">📥 Download</button>` : ''}
+          <button class="btn-ghost" style="font-size:0.7rem;color:var(--red)" onclick="deleteBackup('${b.id}','${sid}')">🗑️</button>
+        </div>
+      </div>`;
+    }
+    html += '</div>';
+    return html;
+  } catch { return ''; }
+}
+
+async function triggerBackup(serverId) {
+  try {
+    await api(`/servers/${serverId}/backup`, { method: 'POST' });
+    toast('Backup started — refresh in a moment to see results');
+    // Re-render health if that's where we are
+    if (currentPage === 'health') setTimeout(renderHealth, 2000);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function downloadBackup(backupId) {
+  try {
+    const data = await api(`/backups/${backupId}`);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cortex-backup-${backupId.slice(0, 8)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Backup downloaded');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteBackup(backupId, serverId) {
+  if (!confirm('Delete this backup?')) return;
+  try {
+    await api(`/backups/${backupId}`, { method: 'DELETE' });
+    toast('Backup deleted');
+    if (currentPage === 'health') renderHealth();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // ═══════════════════════════════════════════════════════════
