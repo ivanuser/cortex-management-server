@@ -58,6 +58,20 @@ app.get('/install.sh', async (req, res) => {
   const mgmtToken = req.query.token || '';
   const mgmtUrl = `${req.protocol}://${req.get('host')}`;
   
+  // Look up token config for API key
+  let apiProvider = '';
+  let apiKey = '';
+  if (mgmtToken) {
+    try {
+      const tokenRow = db.prepare('SELECT config FROM install_tokens WHERE token = ?').get(mgmtToken);
+      if (tokenRow?.config) {
+        const cfg = JSON.parse(tokenRow.config);
+        apiProvider = cfg.provider || '';
+        apiKey = cfg.api_key || '';
+      }
+    } catch {}
+  }
+  
   try {
     // Try to fetch latest installer from GitHub
     const response = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/install.sh');
@@ -69,6 +83,8 @@ app.get('/install.sh', async (req, res) => {
 # ─── Management Server Configuration (auto-injected) ────────
 export MGMT_URL="${mgmtUrl}"
 export MGMT_TOKEN="${mgmtToken}"
+export MGMT_API_PROVIDER="${apiProvider}"
+export MGMT_API_KEY="${apiKey}"
 # ─────────────────────────────────────────────────────────────
 `;
     script = script.replace('set -euo pipefail', 'set -euo pipefail\n' + mgmtConfig);

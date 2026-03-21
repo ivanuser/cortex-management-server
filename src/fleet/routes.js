@@ -114,19 +114,22 @@ router.get('/servers/:id/health', authenticate, (req, res) => {
  * POST /api/v1/tokens — generate an install token
  */
 router.post('/tokens', authenticate, requireRole('admin'), (req, res) => {
-  const { server_name, expires_hours } = req.body;
+  const { server_name, expires_hours, provider, api_key } = req.body;
   const hours = parseInt(expires_hours) || 24;
 
   const id = crypto.randomUUID();
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 
-  db.prepare(`
-    INSERT INTO install_tokens (id, token, server_name, created_by, expires_at)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, token, server_name || null, req.user.id, expiresAt);
+  // Store provider and API key with the token (they'll be injected into the install script)
+  const config = JSON.stringify({ provider: provider || 'skip', api_key: api_key || '' });
 
-  audit(req.user.id, 'token_created', `Install token created for: ${server_name || 'unnamed'}`, req.ip);
+  db.prepare(`
+    INSERT INTO install_tokens (id, token, server_name, created_by, expires_at, config)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, token, server_name || null, req.user.id, expiresAt, config);
+
+  audit(req.user.id, 'token_created', `Install token created for: ${server_name || 'unnamed'} (${provider || 'no provider'})`, req.ip);
 
   res.status(201).json({ id, token, server_name, expires_at: expiresAt });
 });

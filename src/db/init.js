@@ -76,6 +76,7 @@ db.exec(`
     expires_at TEXT NOT NULL,
     used_at TEXT,
     used_by_server TEXT,
+    config TEXT DEFAULT '{}',
     active INTEGER NOT NULL DEFAULT 1,
     FOREIGN KEY (created_by) REFERENCES users(id),
     FOREIGN KEY (used_by_server) REFERENCES servers(id)

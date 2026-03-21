@@ -1951,6 +1951,20 @@ async function renderAdd() {
         <label>Expires In (hours)</label>
         <input type="number" id="token-hours" value="24" min="1" max="720">
       </div>
+      <div class="form-group">
+        <label>AI Provider</label>
+        <select id="token-provider" style="width:100%;padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.85rem">
+          <option value="anthropic">Anthropic (Claude) — recommended</option>
+          <option value="openai">OpenAI (GPT)</option>
+          <option value="google">Google (Gemini)</option>
+          <option value="skip">Skip — configure later</option>
+        </select>
+      </div>
+      <div class="form-group" id="token-apikey-group">
+        <label>API Key / Setup Token</label>
+        <input type="password" id="token-apikey" placeholder="sk-ant-... or setup token">
+        <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.25rem">This key will be injected into the install script and configured on the server automatically.</div>
+      </div>
       <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="generateToken()">Generate Token</button>
       <div id="token-result"></div>
     </div>
@@ -1994,18 +2008,23 @@ async function renderAdd() {
 async function generateToken() {
   const name = $('token-name').value.trim();
   const hours = $('token-hours').value;
+  const provider = $('token-provider').value;
+  const apiKey = $('token-apikey').value.trim();
   try {
     const data = await api('/tokens', {
       method: 'POST',
-      body: JSON.stringify({ server_name: name, expires_hours: hours })
+      body: JSON.stringify({ server_name: name, expires_hours: hours, provider, api_key: apiKey })
     });
+    const installUrl = `${location.origin}/install.sh?token=${data.token}`;
     $('token-result').innerHTML = `
       <div class="token-display"><strong>Install Token:</strong><br>${data.token}</div>
       <button class="copy-btn" onclick="navigator.clipboard.writeText('${data.token}');toast('Token copied!')">📋 Copy Token</button>
       <div class="token-display" style="margin-top:0.75rem">
         <strong>Install Command:</strong><br>
-        curl -sSL "${location.origin}/install.sh?token=${data.token}" | sudo bash
-      </div>`;
+        curl -sSL "${installUrl}" | sudo bash
+      </div>
+      <button class="copy-btn" onclick="navigator.clipboard.writeText('curl -sSL &quot;${installUrl}&quot; | sudo bash');toast('Command copied!')">📋 Copy Command</button>
+      ${apiKey ? '<div style="font-size:0.7rem;color:var(--green);margin-top:0.5rem">✅ API key will be configured automatically during install</div>' : ''}`;
     toast('Token generated');
   } catch (e) { toast(e.message, 'error'); }
 }
