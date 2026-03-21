@@ -867,8 +867,12 @@ async function renderAdd() {
         <input type="text" id="manual-gateway" placeholder="http://192.168.1.100:18789">
       </div>
       <div class="form-group">
+        <label>Gateway Token *</label>
+        <input type="password" id="manual-token" placeholder="Gateway access token">
+      </div>
+      <div class="form-group">
         <label>Agent Name</label>
-        <input type="text" id="manual-agent" placeholder="e.g., Ranaye">
+        <input type="text" id="manual-agent" placeholder="e.g., Athena">
       </div>
       <button class="btn btn-primary" style="width:auto" onclick="manualAdd()">Add Server</button>
     </div>
@@ -910,6 +914,7 @@ async function manualAdd() {
         ip_address: document.getElementById('manual-ip').value.trim(),
         hostname: document.getElementById('manual-host').value.trim(),
         gateway_url: document.getElementById('manual-gateway').value.trim(),
+        gateway_token: document.getElementById('manual-token').value.trim(),
         agent_name: document.getElementById('manual-agent').value.trim()
       })
     });
