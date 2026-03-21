@@ -61,11 +61,11 @@ app.get('/install.sh', async (req, res) => {
     if (!response.ok) throw new Error('Failed to fetch installer');
     let script = await response.text();
     
-    // Inject management server config at the top
+    // Inject management server config — these override the defaults in the script
     const mgmtConfig = `
 # ─── Management Server Configuration (auto-injected) ────────
-MANAGEMENT_URL="${mgmtUrl}"
-MANAGEMENT_TOKEN="${mgmtToken}"
+export MGMT_URL="${mgmtUrl}"
+export MGMT_TOKEN="${mgmtToken}"
 # ─────────────────────────────────────────────────────────────
 `;
     script = script.replace('set -euo pipefail', 'set -euo pipefail\n' + mgmtConfig);

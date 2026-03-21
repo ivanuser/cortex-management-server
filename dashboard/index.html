@@ -2001,7 +2001,7 @@ async function generateToken() {
       <button class="copy-btn" onclick="navigator.clipboard.writeText('${data.token}');toast('Token copied!')">📋 Copy Token</button>
       <div class="token-display" style="margin-top:0.75rem">
         <strong>Install Command:</strong><br>
-        curl -sSL ${location.origin}/install.sh | MGMT_URL=${location.origin} MGMT_TOKEN=${data.token} sudo bash
+        curl -sSL "${location.origin}/install.sh?token=${data.token}" | sudo bash
       </div>`;
     toast('Token generated');
   } catch (e) { toast(e.message, 'error'); }
