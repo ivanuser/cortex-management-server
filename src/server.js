@@ -164,7 +164,11 @@ wss.on('connection', (browserWs, req, targetServer, user) => {
 
   // Open connection to the target gateway
   try {
-    gatewayWs = new WebSocket(gwUrl);
+    gatewayWs = new WebSocket(gwUrl, {
+      headers: {
+        'Origin': `http://${targetServer.gateway_url.replace(/^https?:\/\//, '').replace(/\/$/, '')}`,
+      }
+    });
   } catch (err) {
     console.error(`[WS Proxy] Failed to create WS to ${gwUrl}:`, err.message);
     browserWs.close(1011, 'Failed to connect to gateway');
