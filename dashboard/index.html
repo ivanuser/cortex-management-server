@@ -1054,7 +1054,7 @@ function deselectServer() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// WEBSOCKET CONNECTION TO SERVER GATEWAY
+// WEBSOCKET CONNECTION TO SERVER GATEWAY (via management proxy)
 // ═══════════════════════════════════════════════════════════
 function connectToServer(server) {
   if (!server.gateway_url || !server.gateway_token) {
@@ -1064,7 +1064,10 @@ function connectToServer(server) {
 
   setWsStatus('connecting', 'Connecting…');
 
-  const url = server.gateway_url.replace(/^http/, 'ws').replace(/\/$/, '');
+  // Use the management server's WS proxy to avoid mixed-content issues.
+  // The proxy relays frames bidirectionally to the target gateway.
+  const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = `${wsProto}//${location.host}/api/v1/ws/proxy/${server.id}?jwt=${encodeURIComponent(token)}`;
   let challengeReceived = false;
 
   try {

@@ -2,7 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { config } from './db/init.js';
+import { URL } from 'url';
+import jwt from 'jsonwebtoken';
+import { WebSocketServer, WebSocket } from 'ws';
+import { db, config } from './db/init.js';
 import authRoutes from './auth/routes.js';
 import fleetRoutes from './fleet/routes.js';
 import { startHealthPoller } from './fleet/health-poller.js';
@@ -89,14 +92,142 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// ─── Start ──────────────────────────────────────────────────
-app.listen(PORT, () => {
+// ─── Start (HTTP server + WebSocket proxy) ─────────────────
+import { createServer } from 'http';
+const server = createServer(app);
+
+// ─── WebSocket Proxy ────────────────────────────────────────
+// Proxies browser WS connections to target server gateways,
+// solving mixed-content (wss:// → ws://) issues.
+// Path: /api/v1/ws/proxy/:serverId?jwt=TOKEN
+// ─────────────────────────────────────────────────────────────
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (req, socket, head) => {
+  // Parse the URL to check if it's our proxy path
+  const parsed = new URL(req.url, `http://${req.headers.host}`);
+  const match = parsed.pathname.match(/^\/api\/v1\/ws\/proxy\/([^/]+)$/);
+
+  if (!match) {
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  const serverId = match[1];
+  const jwtToken = parsed.searchParams.get('jwt');
+
+  if (!jwtToken) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  // Verify JWT
+  let user;
+  try {
+    const payload = jwt.verify(jwtToken, config.jwtSecret);
+    user = db.prepare(
+      'SELECT id, username, role, active FROM users WHERE id = ?'
+    ).get(payload.userId);
+    if (!user || !user.active) throw new Error('User inactive');
+  } catch (err) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  // Look up the target server
+  const targetServer = db.prepare(
+    'SELECT id, name, gateway_url, gateway_token FROM servers WHERE id = ?'
+  ).get(serverId);
+
+  if (!targetServer || !targetServer.gateway_url) {
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  // Accept the upgrade
+  wss.handleUpgrade(req, socket, head, (browserWs) => {
+    wss.emit('connection', browserWs, req, targetServer, user);
+  });
+});
+
+wss.on('connection', (browserWs, req, targetServer, user) => {
+  const gwUrl = targetServer.gateway_url.replace(/^http/, 'ws').replace(/\/$/, '');
+  let gatewayWs = null;
+  let browserClosed = false;
+  let gatewayClosed = false;
+
+  console.log(`[WS Proxy] ${user.username} → ${targetServer.name} (${gwUrl})`);
+
+  // Open connection to the target gateway
+  try {
+    gatewayWs = new WebSocket(gwUrl);
+  } catch (err) {
+    console.error(`[WS Proxy] Failed to create WS to ${gwUrl}:`, err.message);
+    browserWs.close(1011, 'Failed to connect to gateway');
+    return;
+  }
+
+  // Gateway connection opened — start relaying
+  gatewayWs.on('open', () => {
+    console.log(`[WS Proxy] Connected to gateway: ${targetServer.name}`);
+  });
+
+  // Relay: Gateway → Browser
+  gatewayWs.on('message', (data, isBinary) => {
+    if (browserWs.readyState === WebSocket.OPEN) {
+      browserWs.send(data, { binary: isBinary });
+    }
+  });
+
+  // Relay: Browser → Gateway
+  browserWs.on('message', (data, isBinary) => {
+    if (gatewayWs.readyState === WebSocket.OPEN) {
+      gatewayWs.send(data, { binary: isBinary });
+    }
+  });
+
+  // Close handling
+  browserWs.on('close', (code, reason) => {
+    browserClosed = true;
+    console.log(`[WS Proxy] Browser disconnected (${targetServer.name}): ${code}`);
+    if (!gatewayClosed && gatewayWs.readyState !== WebSocket.CLOSED) {
+      gatewayWs.close(1000, 'Browser disconnected');
+    }
+  });
+
+  gatewayWs.on('close', (code, reason) => {
+    gatewayClosed = true;
+    console.log(`[WS Proxy] Gateway disconnected (${targetServer.name}): ${code}`);
+    if (!browserClosed && browserWs.readyState !== WebSocket.CLOSED) {
+      browserWs.close(1000, 'Gateway disconnected');
+    }
+  });
+
+  // Error handling
+  browserWs.on('error', (err) => {
+    console.error(`[WS Proxy] Browser WS error (${targetServer.name}):`, err.message);
+  });
+
+  gatewayWs.on('error', (err) => {
+    console.error(`[WS Proxy] Gateway WS error (${targetServer.name}):`, err.message);
+    if (!browserClosed && browserWs.readyState !== WebSocket.CLOSED) {
+      browserWs.close(1011, 'Gateway connection error');
+    }
+  });
+});
+
+server.listen(PORT, () => {
   console.log(`
 ╔═══════════════════════════════════════════════╗
-║       CortexOS Management Server v0.3.0       ║
+║       CortexOS Management Server v0.3.1       ║
 ╠═══════════════════════════════════════════════╣
 ║  Dashboard: http://localhost:${PORT}/dashboard/  ║
 ║  API:       http://localhost:${PORT}/api/v1/     ║
+║  WS Proxy:  ws://localhost:${PORT}/api/v1/ws/proxy/:id ║
 ║  Default:   admin / admin                     ║
 ╚═══════════════════════════════════════════════╝
   `);
