@@ -166,7 +166,7 @@ router.delete('/tokens/:id', authenticate, requireRole('admin'), (req, res) => {
  * No auth required — uses install token instead
  */
 router.post('/servers/register', (req, res) => {
-  const { token, name, hostname, ip_address, gateway_url, agent_name } = req.body;
+  const { token, name, hostname, ip_address, gateway_url, gateway_token, agent_name } = req.body;
 
   if (!token) {
     return res.status(400).json({ error: 'Install token required' });
@@ -191,10 +191,10 @@ router.post('/servers/register', (req, res) => {
   const serverName = name || installToken.server_name || hostname || 'Unnamed Server';
 
   db.prepare(`
-    INSERT INTO servers (id, name, hostname, ip_address, gateway_url, agent_name, status, registered_by)
-    VALUES (?, ?, ?, ?, ?, ?, 'online', ?)
+    INSERT INTO servers (id, name, hostname, ip_address, gateway_url, gateway_token, agent_name, status, registered_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'online', ?)
   `).run(serverId, serverName, hostname || null, ip_address || null,
-    gateway_url || null, agent_name || null, installToken.created_by);
+    gateway_url || null, gateway_token || null, agent_name || null, installToken.created_by);
 
   // Mark token as used
   db.prepare(
