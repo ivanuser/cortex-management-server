@@ -39,6 +39,15 @@ async function pollAll() {
       const stats = await fetchServerHealth(server);
 
       if (stats) {
+        // Extract from nested stats.json format
+        const cpu = stats.cpu?.percent ?? stats.cpu_percent ?? stats.cpu ?? null;
+        const memUsed = stats.memory?.used ?? stats.memory_used_mb ?? null;
+        const memTotal = stats.memory?.total ?? stats.memory_total_mb ?? null;
+        const diskUsed = stats.disk?.used ?? stats.disk_used_gb ?? null;
+        const diskTotal = stats.disk?.total ?? stats.disk_total_gb ?? null;
+        const diskPct = stats.disk?.percent ?? stats.disk_percent ?? null;
+        const uptime = stats.uptime ?? null;
+
         // Record snapshot
         db.prepare(`
           INSERT INTO health_snapshots (id, server_id, cpu_percent, memory_used_mb, memory_total_mb,
@@ -47,13 +56,7 @@ async function pollAll() {
         `).run(
           crypto.randomUUID(),
           server.id,
-          stats.cpu_percent ?? stats.cpu ?? null,
-          stats.memory_used_mb ?? stats.mem_used ?? null,
-          stats.memory_total_mb ?? stats.mem_total ?? null,
-          stats.disk_used_gb ?? null,
-          stats.disk_total_gb ?? null,
-          stats.disk_percent ?? stats.disk ?? null,
-          stats.uptime ?? null
+          cpu, memUsed, memTotal, diskUsed, diskTotal, diskPct, uptime
         );
 
         // Update server status
