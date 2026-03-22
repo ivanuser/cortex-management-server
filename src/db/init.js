@@ -156,6 +156,21 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (created_by) REFERENCES users(id)
   );
+
+  -- Phase 5: Usage Tracking
+  CREATE TABLE IF NOT EXISTS usage_tracking (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    date TEXT NOT NULL,
+    api_calls INTEGER DEFAULT 0,
+    tokens_in INTEGER DEFAULT 0,
+    tokens_out INTEGER DEFAULT 0,
+    estimated_cost REAL DEFAULT 0,
+    recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_usage_server_id ON usage_tracking(server_id);
+  CREATE INDEX IF NOT EXISTS idx_usage_date ON usage_tracking(date);
 `);
 
 // Create default admin user if no users exist

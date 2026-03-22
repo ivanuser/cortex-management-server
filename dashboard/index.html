@@ -720,6 +720,140 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 .fleet-cmd-result .status.sent { color: var(--green); }
 .fleet-cmd-result .status.skipped { color: var(--yellow); }
 
+/* ─── Analytics ─────────────────────── */
+.analytics-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px; margin-bottom: 1.5rem;
+}
+.analytics-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1rem 1.25rem; text-align: center;
+  transition: all 0.2s;
+}
+.analytics-card:hover { border-color: var(--border-glow); transform: translateY(-1px); }
+.analytics-card .value { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.2rem; }
+.analytics-card .label {
+  font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 0.06em; font-weight: 600;
+}
+.analytics-card .value.green { color: var(--green); }
+.analytics-card .value.red { color: var(--red); }
+.analytics-card .value.blue { color: var(--blue); }
+.analytics-card .value.accent { color: var(--accent-light); }
+.analytics-card .value.yellow { color: var(--yellow); }
+
+.analytics-section { margin-bottom: 2rem; }
+.analytics-section h3 {
+  font-size: 0.9rem; font-weight: 700; margin-bottom: 1rem;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+
+.trend-chart {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem;
+}
+.trend-chart h4 { font-size: 0.8rem; color: var(--text-dim); margin-bottom: 0.75rem; }
+.trend-bars {
+  display: flex; align-items: flex-end; gap: 2px; height: 80px;
+}
+.trend-bar {
+  flex: 1; min-width: 4px; border-radius: 2px 2px 0 0; transition: height 0.3s;
+  position: relative; cursor: pointer;
+}
+.trend-bar:hover::after {
+  content: attr(data-tooltip); position: absolute; bottom: 100%; left: 50%;
+  transform: translateX(-50%); padding: 0.2rem 0.5rem; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; font-size: 0.6rem;
+  white-space: nowrap; z-index: 10; color: var(--text);
+}
+.trend-bar-label {
+  display: flex; justify-content: space-between; font-size: 0.6rem;
+  color: var(--text-muted); margin-top: 0.3rem;
+}
+
+.uptime-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px;
+}
+.uptime-card {
+  display: flex; align-items: center; gap: 0.75rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.75rem 1rem;
+}
+.uptime-card .name { font-size: 0.82rem; font-weight: 600; flex: 1; }
+.uptime-bar-bg {
+  width: 80px; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden;
+}
+.uptime-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+.uptime-pct { font-size: 0.75rem; font-weight: 600; width: 45px; text-align: right; }
+
+.incident-type-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;
+}
+.incident-type-card {
+  display: flex; align-items: center; gap: 0.75rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.75rem 1rem;
+}
+.incident-type-card .type-name { font-size: 0.8rem; flex: 1; }
+.incident-type-card .type-count { font-size: 1.1rem; font-weight: 700; }
+
+/* ─── Agent Info ────────────────────── */
+.agent-info-section {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem;
+}
+.agent-info-header {
+  display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem;
+}
+.agent-info-header .agent-icon { font-size: 2rem; }
+.agent-info-header .agent-details { flex: 1; }
+.agent-info-header .agent-name { font-size: 1.1rem; font-weight: 700; }
+.agent-info-header .agent-model {
+  font-size: 0.72rem; color: var(--accent-light); font-family: 'JetBrains Mono', monospace;
+  padding: 0.15rem 0.5rem; background: var(--accent-glow); border-radius: 12px;
+  display: inline-block; margin-top: 0.2rem;
+}
+.agent-info-stats {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border);
+}
+.agent-stat { text-align: center; }
+.agent-stat .val { font-size: 1rem; font-weight: 700; }
+.agent-stat .lbl { font-size: 0.6rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ─── Usage Section ─────────────────── */
+.usage-section {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1.25rem; margin-top: 1rem;
+}
+.usage-section h3 { margin-bottom: 1rem; font-size: 0.95rem; }
+.usage-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+}
+.usage-period { text-align: center; }
+.usage-period .period-label {
+  font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 0.06em; font-weight: 600; margin-bottom: 0.5rem;
+}
+.usage-period .usage-stat { margin-bottom: 0.3rem; }
+.usage-period .usage-val { font-size: 1rem; font-weight: 700; }
+.usage-period .usage-lbl { font-size: 0.6rem; color: var(--text-muted); }
+.usage-note {
+  font-size: 0.7rem; color: var(--text-muted); margin-top: 0.75rem;
+  padding-top: 0.75rem; border-top: 1px solid var(--border); font-style: italic;
+}
+
+/* ─── Model Badge on fleet cards ────── */
+.model-badge {
+  font-size: 0.6rem; font-family: 'JetBrains Mono', monospace;
+  color: var(--accent-light); padding: 0.1rem 0.4rem; background: var(--accent-glow);
+  border-radius: 8px; display: inline-block;
+}
+.skills-badge {
+  font-size: 0.6rem; color: var(--blue); padding: 0.1rem 0.4rem;
+  background: var(--blue-bg); border-radius: 8px; display: inline-block; margin-left: 0.3rem;
+}
+
 /* ─── Responsive ────────────────────── */
 @media (max-width: 768px) {
   .sidebar { display: none; }
@@ -815,6 +949,9 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 
       <div class="sidebar-section">
         <div class="sidebar-title">Operations</div>
+        <div class="nav-item" data-page="analytics" onclick="navigate('analytics')">
+          <span class="icon">📊</span> Analytics
+        </div>
         <div class="nav-item" data-page="schedules" onclick="navigate('schedules')">
           <span class="icon">📅</span> Schedules
         </div>
@@ -928,6 +1065,11 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
       <!-- Audit Page -->
       <div class="page" id="page-audit">
         <div class="page-scroll" id="audit-content"></div>
+      </div>
+
+      <!-- Analytics Page -->
+      <div class="page" id="page-analytics">
+        <div class="page-scroll" id="analytics-content"></div>
       </div>
 
       <!-- Schedules Page -->
@@ -1135,7 +1277,7 @@ function navigate(page) {
     fleet: renderFleet, add: renderAdd, chat: renderChat, skills: renderSkills,
     terminal: renderTerminal, health: renderHealth, users: renderUsers,
     settings: renderSettings, audit: renderAudit, schedules: renderSchedules,
-    'incidents-page': renderIncidentsPage
+    'incidents-page': renderIncidentsPage, analytics: renderAnalytics
   };
   if (renderers[page]) renderers[page]();
 
@@ -1939,7 +2081,7 @@ async function renderFleet() {
           </div>
           <span class="server-card-ip">${esc(s.ip_address || s.hostname || '')}</span>
         </div>
-        ${s.agent_name ? `<div class="server-card-agent">🤖 ${esc(s.agent_name)}</div>` : '<div class="server-card-agent" style="opacity:0.3">No agent configured</div>'}
+        ${s.agent_name ? `<div class="server-card-agent">🤖 ${esc(s.agent_name)}${s.skills_count ? `<span class="skills-badge">🧩 ${s.skills_count} skills</span>` : ''}</div>` : '<div class="server-card-agent" style="opacity:0.3">No agent configured</div>'}
         <div class="stat-bars">
           ${cpuPct !== null ? `<div class="stat-row">
             <span class="stat-label">CPU</span>
@@ -2013,17 +2155,45 @@ async function renderHealth() {
     const memPct = (s.memory_used_mb && s.memory_total_mb) ? Math.round(s.memory_used_mb / s.memory_total_mb * 100) : 0;
     const diskPct = s.disk_percent ?? 0;
 
+    // Determine WS connection status
+    const wsConnected = serverWs && serverWs.readyState === 1;
+
     let html = `
       <div class="section-header">
         <h2>📈 <span>Health</span> — ${esc(s.name)}</h2>
-        <button class="btn-skills" onclick="renderHealth()">↻ Refresh</button>
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn-skills" onclick="showEditServerModal('${s.id}')">✏️ Edit</button>
+          <button class="btn-skills" onclick="renderHealth()">↻ Refresh</button>
+        </div>
       </div>
+
+      <div class="agent-info-section">
+        <div class="agent-info-header">
+          <div class="agent-icon">🤖</div>
+          <div class="agent-details">
+            <div class="agent-name">${esc(s.agent_name || 'No Agent Configured')}</div>
+            ${s.config ? (() => { try { const cfg = JSON.parse(s.config); return cfg.model ? '<span class="agent-info-header agent-model">' + esc(cfg.model) + '</span>' : ''; } catch { return ''; } })() : ''}
+          </div>
+          <div style="text-align:right">
+            <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.3rem">
+              <span class="status-dot ${wsConnected ? 'online' : 'offline'}" style="width:8px;height:8px"></span>
+              <span style="font-size:0.75rem;color:${wsConnected ? 'var(--green)' : 'var(--text-muted)'}">${wsConnected ? 'Connected' : 'Disconnected'}</span>
+            </div>
+            <div style="font-size:0.65rem;color:var(--text-muted)">Last seen: ${timeAgo(s.last_seen)}</div>
+          </div>
+        </div>
+        <div class="agent-info-stats">
+          <div class="agent-stat"><div class="val" style="color:${s.status === 'online' ? 'var(--green)' : 'var(--red)'}">● ${s.status || 'unknown'}</div><div class="lbl">Status</div></div>
+          <div class="agent-stat"><div class="val">${s.skills_count || 0}</div><div class="lbl">Skills</div></div>
+          <div class="agent-stat"><div class="val">${cpuPct ? Math.round(cpuPct) + '%' : '—'}</div><div class="lbl">CPU</div></div>
+          <div class="agent-stat"><div class="val">${memPct ? memPct + '%' : '—'}</div><div class="lbl">Memory</div></div>
+          <div class="agent-stat"><div class="val">${diskPct ? Math.round(diskPct) + '%' : '—'}</div><div class="lbl">Disk</div></div>
+        </div>
+      </div>
+
       <div class="info-grid">
-        <div class="info-card"><div class="info-label">Status</div><div class="info-value" style="color:${s.status === 'online' ? 'var(--green)' : 'var(--red)'}">● ${s.status || 'unknown'}</div></div>
         <div class="info-card"><div class="info-label">IP Address</div><div class="info-value" style="font-family:'JetBrains Mono',monospace;font-size:0.9rem">${esc(s.ip_address || '—')}</div></div>
         <div class="info-card"><div class="info-label">Hostname</div><div class="info-value">${esc(s.hostname || '—')}</div></div>
-        <div class="info-card"><div class="info-label">Agent</div><div class="info-value">${esc(s.agent_name || '—')}</div></div>
-        <div class="info-card"><div class="info-label">CPU</div><div class="info-value">${cpuPct ? Math.round(cpuPct) + '%' : '—'}</div></div>
         <div class="info-card"><div class="info-label">Memory</div><div class="info-value">${s.memory_used_mb ? Math.round(s.memory_used_mb) + ' / ' + Math.round(s.memory_total_mb) + ' MB' : '—'}</div></div>
         <div class="info-card"><div class="info-label">Disk</div><div class="info-value">${s.disk_used_gb ? s.disk_used_gb.toFixed(1) + ' / ' + s.disk_total_gb.toFixed(1) + ' GB' : '—'}</div></div>
         <div class="info-card"><div class="info-label">Uptime</div><div class="info-value">${esc(s.uptime || '—')}</div></div>
@@ -2082,6 +2252,39 @@ async function renderHealth() {
     // Backups section
     const backupsHtml = await renderBackups(s.id);
     html += backupsHtml;
+
+    // Usage tracking section
+    try {
+      const analytics = await api(`/servers/${s.id}/analytics`);
+      const u = analytics.usage;
+      html += `<div class="usage-section">
+        <h3>💰 Usage</h3>
+        <div class="usage-grid">
+          <div class="usage-period">
+            <div class="period-label">Today</div>
+            <div class="usage-stat"><span class="usage-val">${u.today.api_calls}</span> <span class="usage-lbl">API Calls</span></div>
+            <div class="usage-stat"><span class="usage-val">${u.today.tokens_in ? (u.today.tokens_in / 1000).toFixed(1) + 'k' : '0'}</span> <span class="usage-lbl">Tokens In</span></div>
+            <div class="usage-stat"><span class="usage-val">${u.today.tokens_out ? (u.today.tokens_out / 1000).toFixed(1) + 'k' : '0'}</span> <span class="usage-lbl">Tokens Out</span></div>
+            <div class="usage-stat"><span class="usage-val">$${u.today.cost.toFixed(2)}</span> <span class="usage-lbl">Est. Cost</span></div>
+          </div>
+          <div class="usage-period">
+            <div class="period-label">This Week</div>
+            <div class="usage-stat"><span class="usage-val">${u.week.api_calls}</span> <span class="usage-lbl">API Calls</span></div>
+            <div class="usage-stat"><span class="usage-val">${u.week.tokens_in ? (u.week.tokens_in / 1000).toFixed(1) + 'k' : '0'}</span> <span class="usage-lbl">Tokens In</span></div>
+            <div class="usage-stat"><span class="usage-val">${u.week.tokens_out ? (u.week.tokens_out / 1000).toFixed(1) + 'k' : '0'}</span> <span class="usage-lbl">Tokens Out</span></div>
+            <div class="usage-stat"><span class="usage-val">$${u.week.cost.toFixed(2)}</span> <span class="usage-lbl">Est. Cost</span></div>
+          </div>
+          <div class="usage-period">
+            <div class="period-label">This Month</div>
+            <div class="usage-stat"><span class="usage-val">${u.month.api_calls}</span> <span class="usage-lbl">API Calls</span></div>
+            <div class="usage-stat"><span class="usage-val">${u.month.tokens_in ? (u.month.tokens_in / 1000).toFixed(1) + 'k' : '0'}</span> <span class="usage-lbl">Tokens In</span></div>
+            <div class="usage-stat"><span class="usage-val">${u.month.tokens_out ? (u.month.tokens_out / 1000).toFixed(1) + 'k' : '0'}</span> <span class="usage-lbl">Tokens Out</span></div>
+            <div class="usage-stat"><span class="usage-val">$${u.month.cost.toFixed(2)}</span> <span class="usage-lbl">Est. Cost</span></div>
+          </div>
+        </div>
+        <div class="usage-note">📝 Usage data collected when available from the server's gateway. Real tracking requires gateway integration.</div>
+      </div>`;
+    } catch {}
 
     // Server removal (admin only)
     if (currentUser.role === 'admin') {
@@ -2490,7 +2693,7 @@ async function renderSettings() {
         <div class="form-card">
           <h3>Server Info</h3>
           <div style="font-size:0.8rem;color:var(--text-dim);line-height:2.2">
-            <div>Version: <strong style="color:var(--text)">0.5.0</strong></div>
+            <div>Version: <strong style="color:var(--text)">0.5.1</strong></div>
             <div>User: <strong style="color:var(--text)">${esc(me.username)}</strong></div>
             <div>Role: <strong style="color:var(--text)">${esc(me.role)}</strong></div>
             <div>Created: <strong style="color:var(--text)">${me.created_at}</strong></div>
@@ -3149,6 +3352,243 @@ async function deleteWebhook(id, name) {
     toast('Webhook deleted');
     renderSettings();
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// EDIT SERVER MODAL
+// ═══════════════════════════════════════════════════════════
+async function showEditServerModal(serverId) {
+  let server;
+  try {
+    server = await api(`/servers/${serverId}`);
+  } catch (e) { toast('Failed to load server: ' + e.message, 'error'); return; }
+
+  let tags = [];
+  try { tags = JSON.parse(server.tags || '[]'); } catch {}
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:560px">
+      <h3>✏️ Edit Server: ${esc(server.name)}</h3>
+      <div class="form-group">
+        <label>Server Name</label>
+        <input type="text" id="edit-srv-name" value="${esc(server.name || '')}">
+      </div>
+      <div class="form-group">
+        <label>Agent Name</label>
+        <input type="text" id="edit-srv-agent" value="${esc(server.agent_name || '')}" placeholder="e.g., Ranaye">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Hostname</label>
+          <input type="text" id="edit-srv-hostname" value="${esc(server.hostname || '')}">
+        </div>
+        <div class="form-group">
+          <label>IP Address</label>
+          <input type="text" id="edit-srv-ip" value="${esc(server.ip_address || '')}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Gateway URL</label>
+        <input type="text" id="edit-srv-gwurl" value="${esc(server.gateway_url || '')}" placeholder="http://192.168.1.100:18789">
+      </div>
+      <div class="form-group">
+        <label>Gateway Token</label>
+        <input type="password" id="edit-srv-gwtoken" value="${esc(server.gateway_token || '')}" placeholder="Leave unchanged or enter new token">
+      </div>
+      <div class="form-group">
+        <label>Tags (comma-separated)</label>
+        <input type="text" id="edit-srv-tags" value="${esc(tags.join(', '))}" placeholder="production, web, us-east">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="saveServerEdit('${serverId}')">Save Changes</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function saveServerEdit(serverId) {
+  const name = $('edit-srv-name')?.value.trim();
+  const agent_name = $('edit-srv-agent')?.value.trim();
+  const hostname = $('edit-srv-hostname')?.value.trim();
+  const ip_address = $('edit-srv-ip')?.value.trim();
+  const gateway_url = $('edit-srv-gwurl')?.value.trim();
+  const gateway_token = $('edit-srv-gwtoken')?.value.trim();
+  const tagsStr = $('edit-srv-tags')?.value.trim();
+
+  if (!name) { toast('Server name is required', 'error'); return; }
+
+  const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+  try {
+    await api(`/servers/${serverId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, agent_name, hostname, ip_address, gateway_url, gateway_token, tags })
+    });
+    toast('Server updated successfully');
+    document.querySelector('.modal-overlay')?.remove();
+
+    // Refresh current page
+    if (selectedServer?.id === serverId) {
+      // Re-select to update sidebar etc
+      selectedServer.name = name;
+      selectedServer.agent_name = agent_name;
+      $('sidebar-server-name').textContent = name;
+      $('sidebar-server-agent').textContent = agent_name ? '🤖 ' + agent_name : hostname || ip_address || '';
+      aiName = agent_name || 'CortexOS';
+    }
+
+    if (currentPage === 'health') renderHealth();
+    else if (currentPage === 'fleet') renderFleet();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ANALYTICS PAGE
+// ═══════════════════════════════════════════════════════════
+async function renderAnalytics() {
+  const el = $('analytics-content');
+  el.innerHTML = '<p style="color:var(--text-dim);padding:1.5rem">Loading analytics...</p>';
+
+  try {
+    const data = await api('/analytics');
+
+    let html = `
+      <div class="section-header">
+        <h2>📊 <span>Fleet</span> Analytics</h2>
+        <button class="btn-skills" onclick="renderAnalytics()">↻ Refresh</button>
+      </div>
+
+      <div class="analytics-cards">
+        <div class="analytics-card">
+          <div class="value accent">${data.servers.total}</div>
+          <div class="label">Total Servers</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value green">${data.servers.online}</div>
+          <div class="label">Online</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value red">${data.servers.offline}</div>
+          <div class="label">Offline</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value blue">${data.averages.cpu != null ? data.averages.cpu + '%' : '—'}</div>
+          <div class="label">Avg CPU</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value blue">${data.averages.memory_pct != null ? data.averages.memory_pct + '%' : '—'}</div>
+          <div class="label">Avg Memory</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value yellow">${data.incidents.last_24h}</div>
+          <div class="label">Incidents (24h)</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value">${data.incidents.last_7d}</div>
+          <div class="label">Incidents (7d)</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value green">${data.total_backups}</div>
+          <div class="label">Total Backups</div>
+        </div>
+      </div>`;
+
+    // Uptime by server
+    if (data.uptime_by_server && data.uptime_by_server.length > 0) {
+      html += `<div class="analytics-section">
+        <h3>⏱️ Server Uptime (7 day)</h3>
+        <div class="uptime-grid">`;
+      for (const s of data.uptime_by_server) {
+        const color = s.uptime_pct >= 99 ? 'var(--green)' : s.uptime_pct >= 90 ? 'var(--yellow)' : 'var(--red)';
+        html += `<div class="uptime-card">
+          <div class="name">${esc(s.server_name)}</div>
+          <div class="uptime-bar-bg"><div class="uptime-bar-fill" style="width:${Math.min(s.uptime_pct, 100)}%;background:${color}"></div></div>
+          <div class="uptime-pct" style="color:${color}">${s.uptime_pct}%</div>
+        </div>`;
+      }
+      html += '</div></div>';
+    }
+
+    // Per-server health trend charts
+    const servers = await api('/servers');
+    if (servers.length > 0) {
+      html += `<div class="analytics-section">
+        <h3>📈 Health Trends (Last 24h)</h3>`;
+
+      for (const srv of servers) {
+        try {
+          const srvAnalytics = await api(`/servers/${srv.id}/analytics`);
+          if (srvAnalytics.hourly_trends && srvAnalytics.hourly_trends.length > 0) {
+            const trends = srvAnalytics.hourly_trends;
+
+            // CPU trend
+            html += `<div class="trend-chart">
+              <h4>${esc(srv.name)} — CPU Usage</h4>
+              <div class="trend-bars">`;
+            for (const t of trends) {
+              const pct = t.cpu || 0;
+              const color = pct > 90 ? 'var(--red)' : pct > 75 ? 'var(--yellow)' : 'var(--accent)';
+              const hourLabel = t.hour ? t.hour.split(' ')[1] || t.hour : '';
+              html += `<div class="trend-bar" style="height:${Math.max(pct, 2)}%;background:${color}" data-tooltip="${hourLabel}: ${pct}% CPU"></div>`;
+            }
+            html += `</div>
+              <div class="trend-bar-label">
+                <span>${trends[0]?.hour?.split(' ')[1] || ''}</span>
+                <span>${trends[trends.length - 1]?.hour?.split(' ')[1] || ''}</span>
+              </div>
+            </div>`;
+
+            // Memory trend
+            html += `<div class="trend-chart">
+              <h4>${esc(srv.name)} — Memory Usage</h4>
+              <div class="trend-bars">`;
+            for (const t of trends) {
+              const pct = t.memory_pct || 0;
+              const color = pct > 90 ? 'var(--red)' : pct > 75 ? 'var(--yellow)' : 'var(--blue)';
+              const hourLabel = t.hour ? t.hour.split(' ')[1] || t.hour : '';
+              html += `<div class="trend-bar" style="height:${Math.max(pct, 2)}%;background:${color}" data-tooltip="${hourLabel}: ${pct}% Memory"></div>`;
+            }
+            html += `</div>
+              <div class="trend-bar-label">
+                <span>${trends[0]?.hour?.split(' ')[1] || ''}</span>
+                <span>${trends[trends.length - 1]?.hour?.split(' ')[1] || ''}</span>
+              </div>
+            </div>`;
+          }
+        } catch {}
+      }
+      html += '</div>';
+    }
+
+    // Incident breakdown by type
+    if (data.incidents.by_type && data.incidents.by_type.length > 0) {
+      html += `<div class="analytics-section">
+        <h3>🚨 Incident Breakdown (7 day)</h3>
+        <div class="incident-type-grid">`;
+      for (const inc of data.incidents.by_type) {
+        const color = inc.severity === 'critical' ? 'var(--red)' : inc.severity === 'warning' ? 'var(--yellow)' : 'var(--blue)';
+        html += `<div class="incident-type-card">
+          <span class="severity-dot ${inc.severity}"></span>
+          <div class="type-name">${esc(inc.type.replace(/_/g, ' '))}</div>
+          <div class="type-count" style="color:${color}">${inc.count}</div>
+        </div>`;
+      }
+      html += '</div></div>';
+    } else {
+      html += `<div class="analytics-section">
+        <h3>🚨 Incident Breakdown</h3>
+        <div class="form-card"><p class="no-data" style="text-align:center;padding:0.75rem">✅ No incidents in the last 7 days</p></div>
+      </div>`;
+    }
+
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<div class="section-header"><h2>📊 <span>Fleet</span> Analytics</h2></div><p class="error-msg">${esc(e.message)}</p>`;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════

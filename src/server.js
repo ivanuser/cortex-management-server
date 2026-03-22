@@ -245,7 +245,7 @@ wss.on('connection', (browserWs, req, targetServer, user) => {
 server.listen(PORT, () => {
   console.log(`
 ╔═══════════════════════════════════════════════╗
-║       CortexOS Management Server v0.5.0       ║
+║       CortexOS Management Server v0.5.1       ║
 ╠═══════════════════════════════════════════════╣
 ║  Dashboard: http://localhost:${PORT}/dashboard/  ║
 ║  API:       http://localhost:${PORT}/api/v1/     ║

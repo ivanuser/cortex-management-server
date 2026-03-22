@@ -91,6 +91,40 @@ router.post('/servers', authenticate, requireRole('admin'), (req, res) => {
 });
 
 /**
+ * PUT /api/v1/servers/:id — update server details
+ */
+router.put('/servers/:id', authenticate, requireRole('admin', 'operator'), (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) {
+    return res.status(404).json({ error: 'Server not found' });
+  }
+
+  const { name, agent_name, hostname, ip_address, gateway_url, gateway_token, tags } = req.body;
+
+  const newName = name !== undefined ? name : server.name;
+  const newAgentName = agent_name !== undefined ? agent_name : server.agent_name;
+  const newHostname = hostname !== undefined ? hostname : server.hostname;
+  const newIpAddress = ip_address !== undefined ? ip_address : server.ip_address;
+  const newGatewayUrl = gateway_url !== undefined ? gateway_url : server.gateway_url;
+  const newGatewayToken = gateway_token !== undefined ? gateway_token : server.gateway_token;
+  const newTags = tags !== undefined ? JSON.stringify(tags) : server.tags;
+
+  if (!newName) {
+    return res.status(400).json({ error: 'Server name cannot be empty' });
+  }
+
+  db.prepare(`
+    UPDATE servers SET name = ?, agent_name = ?, hostname = ?, ip_address = ?,
+      gateway_url = ?, gateway_token = ?, tags = ?
+    WHERE id = ?
+  `).run(newName, newAgentName, newHostname, newIpAddress,
+    newGatewayUrl, newGatewayToken, newTags, req.params.id);
+
+  audit(req.user.id, 'server_updated', `Updated server: ${newName}`, req.ip, req.params.id);
+  res.json({ message: 'Server updated', id: req.params.id });
+});
+
+/**
  * DELETE /api/v1/servers/:id — remove a server and all associated data
  */
 router.delete('/servers/:id', authenticate, requireRole('admin'), (req, res) => {
@@ -816,6 +850,191 @@ router.delete('/backups/:id', authenticate, requireRole('admin'), (req, res) => 
   db.prepare('DELETE FROM agent_backups WHERE id = ?').run(req.params.id);
   audit(req.user.id, 'backup_deleted', 'Backup deleted', req.ip);
   res.json({ message: 'Backup deleted' });
+});
+
+// ─── Analytics ──────────────────────────────────────────────
+
+/**
+ * GET /api/v1/analytics — aggregate fleet analytics
+ */
+router.get('/analytics', authenticate, (req, res) => {
+  // Total servers, online, offline
+  const serverStats = db.prepare(`
+    SELECT
+      COUNT(*) as total,
+      SUM(CASE WHEN status = 'online' THEN 1 ELSE 0 END) as online,
+      SUM(CASE WHEN status = 'offline' THEN 1 ELSE 0 END) as offline
+    FROM servers
+  `).get();
+
+  // Average CPU/RAM/disk across fleet (from latest snapshots per server)
+  const avgMetrics = db.prepare(`
+    SELECT
+      AVG(h.cpu_percent) as avg_cpu,
+      AVG(CASE WHEN h.memory_total_mb > 0 THEN h.memory_used_mb * 100.0 / h.memory_total_mb ELSE NULL END) as avg_memory_pct,
+      AVG(h.disk_percent) as avg_disk
+    FROM health_snapshots h
+    INNER JOIN (
+      SELECT server_id, MAX(recorded_at) as max_recorded_at
+      FROM health_snapshots
+      GROUP BY server_id
+    ) latest ON h.server_id = latest.server_id AND h.recorded_at = latest.max_recorded_at
+  `).get();
+
+  // Incidents last 24h and 7d
+  const incidents24h = db.prepare(
+    "SELECT COUNT(*) as count FROM incidents WHERE created_at >= datetime('now', '-1 day')"
+  ).get();
+  const incidents7d = db.prepare(
+    "SELECT COUNT(*) as count FROM incidents WHERE created_at >= datetime('now', '-7 days')"
+  ).get();
+
+  // Total scheduled ops run
+  const scheduledOpsRun = db.prepare(
+    "SELECT COUNT(*) as count FROM scheduled_ops WHERE last_run IS NOT NULL"
+  ).get();
+
+  // Total backups
+  const totalBackups = db.prepare(
+    "SELECT COUNT(*) as count FROM agent_backups WHERE status = 'completed'"
+  ).get();
+
+  // Uptime percentage per server (based on health snapshot history, last 7 days)
+  const servers = db.prepare('SELECT id, name FROM servers').all();
+  const uptimeByServer = [];
+  for (const s of servers) {
+    const totalSnapshots = db.prepare(
+      "SELECT COUNT(*) as count FROM health_snapshots WHERE server_id = ? AND recorded_at >= datetime('now', '-7 days')"
+    ).get(s.id);
+    // If we have snapshots, the server was online. Compare to expected (~every 30s = ~20160 in 7 days)
+    // More practically: count snapshots vs expected based on poll interval
+    const expectedPolls = 7 * 24 * 60 * 2; // one poll every 30s
+    const uptimePct = totalSnapshots.count > 0
+      ? Math.min(100, (totalSnapshots.count / expectedPolls) * 100).toFixed(1)
+      : 0;
+    uptimeByServer.push({ server_id: s.id, server_name: s.name, uptime_pct: parseFloat(uptimePct), snapshots: totalSnapshots.count });
+  }
+
+  // Incident breakdown by type
+  const incidentTypes = db.prepare(`
+    SELECT type, severity, COUNT(*) as count
+    FROM incidents
+    WHERE created_at >= datetime('now', '-7 days')
+    GROUP BY type, severity
+    ORDER BY count DESC
+  `).all();
+
+  res.json({
+    servers: {
+      total: serverStats.total,
+      online: serverStats.online,
+      offline: serverStats.offline
+    },
+    averages: {
+      cpu: avgMetrics.avg_cpu ? parseFloat(avgMetrics.avg_cpu.toFixed(1)) : null,
+      memory_pct: avgMetrics.avg_memory_pct ? parseFloat(avgMetrics.avg_memory_pct.toFixed(1)) : null,
+      disk_pct: avgMetrics.avg_disk ? parseFloat(avgMetrics.avg_disk.toFixed(1)) : null
+    },
+    incidents: {
+      last_24h: incidents24h.count,
+      last_7d: incidents7d.count,
+      by_type: incidentTypes
+    },
+    scheduled_ops_run: scheduledOpsRun.count,
+    total_backups: totalBackups.count,
+    uptime_by_server: uptimeByServer
+  });
+});
+
+/**
+ * GET /api/v1/servers/:id/analytics — per-server analytics
+ */
+router.get('/servers/:id/analytics', authenticate, (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) {
+    return res.status(404).json({ error: 'Server not found' });
+  }
+
+  // CPU/RAM/disk hourly averages for last 24h
+  const hourlyTrends = db.prepare(`
+    SELECT
+      strftime('%Y-%m-%d %H:00', recorded_at) as hour,
+      AVG(cpu_percent) as avg_cpu,
+      AVG(CASE WHEN memory_total_mb > 0 THEN memory_used_mb * 100.0 / memory_total_mb ELSE NULL END) as avg_memory_pct,
+      AVG(disk_percent) as avg_disk,
+      COUNT(*) as sample_count
+    FROM health_snapshots
+    WHERE server_id = ? AND recorded_at >= datetime('now', '-24 hours')
+    GROUP BY strftime('%Y-%m-%d %H:00', recorded_at)
+    ORDER BY hour ASC
+  `).all(req.params.id);
+
+  // Incident count and types for this server
+  const incidents = db.prepare(`
+    SELECT type, severity, COUNT(*) as count
+    FROM incidents
+    WHERE server_id = ? AND created_at >= datetime('now', '-7 days')
+    GROUP BY type, severity
+    ORDER BY count DESC
+  `).all(req.params.id);
+
+  const totalIncidents = db.prepare(
+    "SELECT COUNT(*) as count FROM incidents WHERE server_id = ? AND created_at >= datetime('now', '-7 days')"
+  ).get(req.params.id);
+
+  const activeIncidents = db.prepare(
+    'SELECT COUNT(*) as count FROM incidents WHERE server_id = ? AND resolved = 0'
+  ).get(req.params.id);
+
+  // Usage tracking data (if any)
+  const usageToday = db.prepare(
+    "SELECT SUM(api_calls) as api_calls, SUM(tokens_in) as tokens_in, SUM(tokens_out) as tokens_out, SUM(estimated_cost) as cost FROM usage_tracking WHERE server_id = ? AND date = date('now')"
+  ).get(req.params.id);
+
+  const usageWeek = db.prepare(
+    "SELECT SUM(api_calls) as api_calls, SUM(tokens_in) as tokens_in, SUM(tokens_out) as tokens_out, SUM(estimated_cost) as cost FROM usage_tracking WHERE server_id = ? AND date >= date('now', '-7 days')"
+  ).get(req.params.id);
+
+  const usageMonth = db.prepare(
+    "SELECT SUM(api_calls) as api_calls, SUM(tokens_in) as tokens_in, SUM(tokens_out) as tokens_out, SUM(estimated_cost) as cost FROM usage_tracking WHERE server_id = ? AND date >= date('now', '-30 days')"
+  ).get(req.params.id);
+
+  res.json({
+    server_id: server.id,
+    server_name: server.name,
+    hourly_trends: hourlyTrends.map(h => ({
+      hour: h.hour,
+      cpu: h.avg_cpu ? parseFloat(h.avg_cpu.toFixed(1)) : null,
+      memory_pct: h.avg_memory_pct ? parseFloat(h.avg_memory_pct.toFixed(1)) : null,
+      disk_pct: h.avg_disk ? parseFloat(h.avg_disk.toFixed(1)) : null,
+      samples: h.sample_count
+    })),
+    incidents: {
+      total_7d: totalIncidents.count,
+      active: activeIncidents.count,
+      by_type: incidents
+    },
+    usage: {
+      today: {
+        api_calls: usageToday?.api_calls || 0,
+        tokens_in: usageToday?.tokens_in || 0,
+        tokens_out: usageToday?.tokens_out || 0,
+        cost: usageToday?.cost || 0
+      },
+      week: {
+        api_calls: usageWeek?.api_calls || 0,
+        tokens_in: usageWeek?.tokens_in || 0,
+        tokens_out: usageWeek?.tokens_out || 0,
+        cost: usageWeek?.cost || 0
+      },
+      month: {
+        api_calls: usageMonth?.api_calls || 0,
+        tokens_in: usageMonth?.tokens_in || 0,
+        tokens_out: usageMonth?.tokens_out || 0,
+        cost: usageMonth?.cost || 0
+      }
+    }
+  });
 });
 
 export default router;

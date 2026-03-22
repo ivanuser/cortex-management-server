@@ -28,6 +28,32 @@ async function fetchServerHealth(server) {
 }
 
 /**
+ * Fetch skills count from a server's /skills.json endpoint
+ */
+async function fetchServerSkills(server) {
+  if (!server.gateway_url) return null;
+
+  const url = server.gateway_url.replace(/\/+$/, '') + '/skills.json';
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      count: data.count || (data.installed ? data.installed.length : 0),
+      skills: data.installed || []
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Poll all registered servers for health data
  */
 async function pollAll() {
@@ -67,6 +93,16 @@ async function pollAll() {
         db.prepare(
           "UPDATE servers SET status = ?, last_seen = datetime('now') WHERE id = ?"
         ).run('online', server.id);
+
+        // Fetch skills count (non-blocking, don't fail health poll if this fails)
+        try {
+          const skillsData = await fetchServerSkills(server);
+          if (skillsData) {
+            db.prepare(
+              'UPDATE servers SET skills_count = ? WHERE id = ?'
+            ).run(skillsData.count, server.id);
+          }
+        } catch {}
       } else {
         // No response — check if we should mark offline
         if (server.status === 'online') {
