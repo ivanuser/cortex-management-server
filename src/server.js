@@ -18,7 +18,7 @@ const PORT = config.port || 9443;
 
 // ─── Middleware ─────────────────────────────────────────────
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Simple cookie parser (avoid extra dependency)
 app.use((req, _res, next) => {
