@@ -670,7 +670,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 
 /* ─── Incidents ─────────────────────── */
 .incident-badge {
-  position: absolute; top: 8px; right: 8px;
+  position: absolute; top: 8px; left: 8px;
   padding: 0.15rem 0.5rem; border-radius: 12px;
   font-size: 0.6rem; font-weight: 700; z-index: 2;
 }
@@ -1699,7 +1699,10 @@ function navigate(page) {
   currentPage = page;
 
   // Clear chat unread when switching to chat
-  if (page === 'chat') clearChatUnread();
+  if (page === 'chat') {
+    clearChatUnread();
+    // clearChatUnread already handles fleet unread for selected server
+  }
 
   // Update sidebar active state
   document.querySelectorAll('.nav-item, .nav-sub-item').forEach(el => el.classList.remove('active'));
@@ -1737,6 +1740,10 @@ async function selectServer(serverId) {
     const server = await api(`/servers/${serverId}`);
     selectedServer = server;
     localStorage.setItem('cortex_mgmt_selected_server', JSON.stringify({ id: server.id }));
+
+    // Clear fleet unread for this server
+    delete fleetUnreadCounts[server.id];
+    updateFleetUnreadUI();
 
     // Update sidebar
     $('server-nav-section').style.display = '';
@@ -2132,6 +2139,10 @@ function addChatMsg(role, text, rawHtml, skipSave) {
   if (role === 'assistant' && currentPage !== 'chat') {
     chatUnreadCount++;
     updateChatBadge();
+    // Also increment fleet unread for this server
+    if (selectedServer?.id) {
+      incrementFleetUnread(selectedServer.id);
+    }
     showChatToast(aiName);
     playChatBeep();
   }
@@ -2155,6 +2166,9 @@ function msgHead(role) {
   if (role === 'user') {
     return `<div class="msg-head"><div class="msg-avatar-placeholder">👤</div>You</div>`;
   }
+  if (selectedServer?.avatar_data) {
+    return `<div class="msg-head"><img src="${selectedServer.avatar_data}" style="width:24px;height:24px;border-radius:6px;object-fit:cover" alt="" />${esc(aiName)}</div>`;
+  }
   return `<div class="msg-head"><div class="msg-avatar-placeholder">⚡</div>${esc(aiName)}</div>`;
 }
 
@@ -2173,9 +2187,10 @@ function updateStream(t) {
 function removeStream() { const el = $('stream-msg'); if (el) el.remove(); }
 
 // ═══════════════════════════════════════════════════════════
-// CHAT NOTIFICATIONS
+// CHAT NOTIFICATIONS & FLEET UNREAD BADGES
 // ═══════════════════════════════════════════════════════════
 let chatUnreadCount = 0;
+const fleetUnreadCounts = {}; // { serverId: count }
 
 function updateChatBadge() {
   const badge = $('chat-unread-badge');
@@ -2191,6 +2206,36 @@ function updateChatBadge() {
 function clearChatUnread() {
   chatUnreadCount = 0;
   updateChatBadge();
+  // Also clear fleet unread for the currently selected server
+  if (selectedServer?.id) {
+    delete fleetUnreadCounts[selectedServer.id];
+    updateFleetUnreadUI();
+  }
+}
+
+function incrementFleetUnread(serverId) {
+  if (!serverId) return;
+  fleetUnreadCounts[serverId] = (fleetUnreadCounts[serverId] || 0) + 1;
+  updateFleetUnreadUI();
+}
+
+function updateFleetUnreadUI() {
+  // Update Fleet nav dot — show if any server has unreads
+  const totalUnread = Object.values(fleetUnreadCounts).reduce((s, c) => s + c, 0);
+  const dot = $('fleet-unread-dot');
+  if (dot) dot.style.display = totalUnread > 0 ? '' : 'none';
+
+  // Update fleet card badges (if fleet page is rendered)
+  document.querySelectorAll('[data-fleet-unread-id]').forEach(badge => {
+    const sid = badge.dataset.fleetUnreadId;
+    const count = fleetUnreadCounts[sid] || 0;
+    if (count > 0) {
+      badge.textContent = count > 99 ? '99+' : count;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  });
 }
 
 function showChatToast(name) {
@@ -2268,32 +2313,38 @@ function handleAvatarUpload(input) {
   const file = input.files[0];
   if (!file || !selectedServer) return;
   const reader = new FileReader();
-  reader.onload = () => {
-    const base64 = reader.result.split(',')[1];
-    if (!serverWs || serverWs.readyState !== 1) {
-      toast('Not connected to server', 'error');
-      return;
+  reader.onload = async () => {
+    const dataUrl = reader.result; // full data:image/...;base64,...
+    const base64 = dataUrl.split(',')[1];
+
+    // 1. Save avatar_data to server record (persistent storage)
+    try {
+      await api(`/servers/${selectedServer.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ avatar_data: dataUrl })
+      });
+      // Update local server object
+      selectedServer.avatar_data = dataUrl;
+      toast('Avatar saved');
+    } catch (e) {
+      toast('Failed to save avatar: ' + e.message, 'error');
     }
-    // Send via WS proxy using agents.files.set RPC
-    const id = 'avatar-set-' + (++wsMsgN);
-    serverWs.send(JSON.stringify({
-      type: 'req',
-      method: 'agents.files.set',
-      id: id,
-      params: { path: 'athena.png', content: base64, encoding: 'base64' }
-    }));
-    // Also ask agent to copy to dashboard dir
-    serverWs.send(JSON.stringify({
-      type: 'req',
-      method: 'chat.send',
-      id: 'chat-' + (++wsMsgN),
-      params: { sessionKey: wsSessionKey || 'agent:main:webchat', message: 'Copy ~/athena.png to the dashboard directory and respond with just "Avatar updated"', idempotencyKey: crypto.randomUUID() }
-    }));
-    toast('Avatar uploading…');
-    // Update preview immediately
+
+    // 2. Also send to agent workspace via WS if connected (legacy support)
+    if (serverWs && serverWs.readyState === 1) {
+      const id = 'avatar-set-' + (++wsMsgN);
+      serverWs.send(JSON.stringify({
+        type: 'req',
+        method: 'agents.files.set',
+        id: id,
+        params: { path: 'athena.png', content: base64, encoding: 'base64' }
+      }));
+    }
+
+    // 3. Update preview immediately
     const img = $('sidebar-agent-avatar');
     const placeholder = $('sidebar-agent-avatar-placeholder');
-    img.src = reader.result;
+    img.src = dataUrl;
     img.style.display = '';
     placeholder.style.display = 'none';
   };
@@ -2717,10 +2768,16 @@ async function renderFleet() {
       const isSelected = selectedServer?.id === s.id;
 
       const incidentCount = s.active_incidents || 0;
+      const unreadCount = fleetUnreadCounts[s.id] || 0;
+      const avatarHtml = s.avatar_data
+        ? `<img class="fleet-card-avatar" src="${s.avatar_data}" alt="" />`
+        : `<div class="fleet-card-avatar-placeholder">${s.agent_name ? esc(s.agent_name.charAt(0).toUpperCase()) : '⚡'}</div>`;
       html += `<div class="server-card" style="${isSelected ? 'border-color:var(--accent);box-shadow:0 0 20px var(--accent-glow)' : ''}">
+        ${unreadCount > 0 ? `<span class="fleet-unread-badge" data-fleet-unread-id="${s.id}">${unreadCount > 99 ? '99+' : unreadCount}</span>` : `<span class="fleet-unread-badge" data-fleet-unread-id="${s.id}" style="display:none">0</span>`}
         ${incidentCount > 0 ? `<span class="incident-badge critical">🚨 ${incidentCount} incident${incidentCount > 1 ? 's' : ''}</span>` : ''}
         <div class="server-card-header">
           <div class="server-card-name">
+            ${avatarHtml}
             <span class="status-dot ${s.status || 'unknown'}"></span>
             ${esc(s.name)}
           </div>
