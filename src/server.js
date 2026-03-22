@@ -9,6 +9,8 @@ import { db, config } from './db/init.js';
 import authRoutes from './auth/routes.js';
 import fleetRoutes from './fleet/routes.js';
 import { startHealthPoller } from './fleet/health-poller.js';
+import { startIncidentMonitor } from './fleet/incident-response.js';
+import { startScheduler } from './fleet/scheduler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -243,7 +245,7 @@ wss.on('connection', (browserWs, req, targetServer, user) => {
 server.listen(PORT, () => {
   console.log(`
 ╔═══════════════════════════════════════════════╗
-║       CortexOS Management Server v0.4.0       ║
+║       CortexOS Management Server v0.5.0       ║
 ╠═══════════════════════════════════════════════╣
 ║  Dashboard: http://localhost:${PORT}/dashboard/  ║
 ║  API:       http://localhost:${PORT}/api/v1/     ║
@@ -252,6 +254,8 @@ server.listen(PORT, () => {
 ╚═══════════════════════════════════════════════╝
   `);
   startHealthPoller();
+  startIncidentMonitor();
+  startScheduler();
 });
 
 export default app;

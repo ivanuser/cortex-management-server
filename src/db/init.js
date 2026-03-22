@@ -112,6 +112,50 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_health_recorded_at ON health_snapshots(recorded_at);
   CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_log(created_at);
   CREATE INDEX IF NOT EXISTS idx_servers_status ON servers(status);
+
+  -- Phase 4: Incidents
+  CREATE TABLE IF NOT EXISTS incidents (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'warning',
+    message TEXT NOT NULL,
+    auto_action TEXT,
+    resolved INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at TEXT,
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_incidents_server_id ON incidents(server_id);
+  CREATE INDEX IF NOT EXISTS idx_incidents_created_at ON incidents(created_at);
+  CREATE INDEX IF NOT EXISTS idx_incidents_resolved ON incidents(resolved);
+
+  -- Phase 4: Scheduled Operations
+  CREATE TABLE IF NOT EXISTS scheduled_ops (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    server_ids TEXT NOT NULL DEFAULT '*',
+    command TEXT NOT NULL,
+    cron_expr TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_by TEXT,
+    last_run TEXT,
+    next_run TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  );
+
+  -- Phase 4: Webhooks
+  CREATE TABLE IF NOT EXISTS webhooks (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    events TEXT NOT NULL DEFAULT '[]',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  );
 `);
 
 // Create default admin user if no users exist

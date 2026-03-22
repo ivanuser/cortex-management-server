@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { db } from '../db/init.js';
+import { fireWebhookEvent } from './webhooks.js';
 
 const POLL_INTERVAL = 30_000; // 30 seconds
 let pollTimer = null;
@@ -60,6 +61,9 @@ async function pollAll() {
         );
 
         // Update server status
+        if (server.status !== 'online') {
+          fireWebhookEvent('server_online', { server_id: server.id, server_name: server.name });
+        }
         db.prepare(
           "UPDATE servers SET status = ?, last_seen = datetime('now') WHERE id = ?"
         ).run('online', server.id);
@@ -69,6 +73,7 @@ async function pollAll() {
           db.prepare(
             'UPDATE servers SET status = ? WHERE id = ?'
           ).run('offline', server.id);
+          fireWebhookEvent('server_offline', { server_id: server.id, server_name: server.name });
         }
       }
     } catch (err) {

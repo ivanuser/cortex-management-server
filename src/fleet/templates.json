@@ -1,0 +1,67 @@
+[
+  {
+    "id": "web-server",
+    "name": "Web Server",
+    "icon": "🌍",
+    "description": "Nginx reverse proxy with SSL certificates and security hardening",
+    "skills": ["nginx", "certbot", "security-hardening", "firewall-manager"],
+    "setup_commands": [
+      "Install and configure nginx as a reverse proxy",
+      "Set up certbot for Let's Encrypt SSL certificates",
+      "Run security hardening — SSH config, fail2ban, audit",
+      "Configure UFW firewall — allow 80, 443, 22 only"
+    ]
+  },
+  {
+    "id": "database-server",
+    "name": "Database Server",
+    "icon": "🐘",
+    "description": "PostgreSQL and Redis with automated backups",
+    "skills": ["postgres", "redis", "backup-manager", "security-hardening"],
+    "setup_commands": [
+      "Install and configure PostgreSQL with secure defaults",
+      "Install and configure Redis with authentication",
+      "Set up backup-manager for daily database backups",
+      "Run security hardening for database server"
+    ]
+  },
+  {
+    "id": "docker-host",
+    "name": "Docker Host",
+    "icon": "🐳",
+    "description": "Docker engine with compose support and container management",
+    "skills": ["docker-manager", "docker-compose", "monitoring"],
+    "setup_commands": [
+      "Install Docker Engine and Docker Compose",
+      "Configure Docker with recommended production settings",
+      "Set up container monitoring and log rotation"
+    ]
+  },
+  {
+    "id": "full-stack",
+    "name": "Full Stack",
+    "icon": "🚀",
+    "description": "Complete web application stack with Nginx, PostgreSQL, Redis, Node.js, and SSL",
+    "skills": ["nginx", "postgres", "redis", "nodejs", "certbot", "security-hardening", "firewall-manager"],
+    "setup_commands": [
+      "Install and configure nginx as a reverse proxy",
+      "Install PostgreSQL and Redis",
+      "Install Node.js via nvm with PM2 process manager",
+      "Set up certbot for SSL certificates",
+      "Run full security hardening",
+      "Configure UFW firewall for web application"
+    ]
+  },
+  {
+    "id": "monitoring",
+    "name": "Monitoring",
+    "icon": "📊",
+    "description": "Prometheus metrics collection and Grafana dashboards",
+    "skills": ["prometheus", "grafana", "monitoring"],
+    "setup_commands": [
+      "Install and configure Prometheus for metrics collection",
+      "Install Grafana and set up default dashboards",
+      "Configure monitoring exporters for system metrics"
+    ]
+  }
+]

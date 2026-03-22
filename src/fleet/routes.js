@@ -2,6 +2,10 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import { db } from '../db/init.js';
 import { authenticate, requireRole } from '../auth/middleware.js';
+import { getActiveIncidentCount } from './incident-response.js';
+import { fireWebhookEvent, sendTestWebhook, WEBHOOK_EVENTS } from './webhooks.js';
+import { calculateNextRun } from './scheduler.js';
+import { getTemplates, getTemplate, applyTemplate } from './templates.js';
 
 const router = Router();
 
@@ -31,6 +35,11 @@ router.get('/servers', authenticate, (req, res) => {
     )
     ORDER BY s.name
   `).all();
+
+  // Attach active incident count per server
+  for (const s of servers) {
+    s.active_incidents = getActiveIncidentCount(s.id);
+  }
 
   res.json(servers);
 });
@@ -90,9 +99,13 @@ router.delete('/servers/:id', authenticate, requireRole('admin'), (req, res) => 
     return res.status(404).json({ error: 'Server not found' });
   }
 
-  // Explicitly clean up associated data (also handled by ON DELETE CASCADE)
+  // Clean up all associated data
   const healthDeleted = db.prepare('DELETE FROM health_snapshots WHERE server_id = ?').run(req.params.id);
   const backupsDeleted = db.prepare('DELETE FROM agent_backups WHERE server_id = ?').run(req.params.id);
+  // Clear foreign key reference in install_tokens
+  db.prepare('UPDATE install_tokens SET used_by_server = NULL WHERE used_by_server = ?').run(req.params.id);
+  // Clear any audit log references
+  db.prepare('UPDATE audit_log SET server_id = NULL WHERE server_id = ?').run(req.params.id);
   db.prepare('DELETE FROM servers WHERE id = ?').run(req.params.id);
 
   audit(req.user.id, 'server_removed',
@@ -120,15 +133,15 @@ router.get('/servers/:id/health', authenticate, (req, res) => {
  * POST /api/v1/tokens — generate an install token
  */
 router.post('/tokens', authenticate, requireRole('admin'), (req, res) => {
-  const { server_name, expires_hours, provider, api_key } = req.body;
+  const { server_name, expires_hours, provider, api_key, template_id } = req.body;
   const hours = parseInt(expires_hours) || 24;
 
   const id = crypto.randomUUID();
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 
-  // Store provider and API key with the token (they'll be injected into the install script)
-  const config = JSON.stringify({ provider: provider || 'skip', api_key: api_key || '' });
+  // Store provider, API key, and template with the token
+  const config = JSON.stringify({ provider: provider || 'skip', api_key: api_key || '', template_id: template_id || '' });
 
   db.prepare(`
     INSERT INTO install_tokens (id, token, server_name, created_by, expires_at, config)
@@ -213,6 +226,20 @@ router.post('/servers/register', (req, res) => {
   audit(installToken.created_by, 'server_registered',
     `Server registered via token: ${serverName}`, req.ip, serverId);
 
+  // Apply template if one was specified in the token config
+  try {
+    const tokenConfig = JSON.parse(installToken.config || '{}');
+    if (tokenConfig.template_id) {
+      const registeredServer = db.prepare('SELECT * FROM servers WHERE id = ?').get(serverId);
+      if (registeredServer) {
+        // Delay template application to give the server time to boot
+        setTimeout(() => {
+          applyTemplate(registeredServer, tokenConfig.template_id);
+        }, 30_000);
+      }
+    }
+  } catch {}
+
   res.status(201).json({ id: serverId, name: serverName, message: 'Server registered successfully' });
 });
 
@@ -259,6 +286,338 @@ router.get('/audit', authenticate, requireRole('admin'), (req, res) => {
 
   res.json({ logs, total: total.count, limit, offset, actions });
 });
+
+// ─── Incidents ──────────────────────────────────────────────
+
+/**
+ * GET /api/v1/incidents — list recent incidents
+ */
+router.get('/incidents', authenticate, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+  const serverId = req.query.server_id || null;
+  const resolved = req.query.resolved;
+
+  let where = [];
+  let params = [];
+
+  if (serverId) {
+    where.push('i.server_id = ?');
+    params.push(serverId);
+  }
+  if (resolved !== undefined) {
+    where.push('i.resolved = ?');
+    params.push(resolved === 'true' || resolved === '1' ? 1 : 0);
+  }
+
+  const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
+  params.push(limit);
+
+  const incidents = db.prepare(`
+    SELECT i.*, s.name as server_name
+    FROM incidents i
+    JOIN servers s ON s.id = i.server_id
+    ${whereClause}
+    ORDER BY i.created_at DESC
+    LIMIT ?
+  `).all(...params);
+
+  res.json(incidents);
+});
+
+/**
+ * PUT /api/v1/incidents/:id/resolve — manually resolve an incident
+ */
+router.put('/incidents/:id/resolve', authenticate, requireRole('admin', 'operator'), (req, res) => {
+  const incident = db.prepare('SELECT id FROM incidents WHERE id = ?').get(req.params.id);
+  if (!incident) return res.status(404).json({ error: 'Incident not found' });
+
+  db.prepare(
+    "UPDATE incidents SET resolved = 1, resolved_at = datetime('now') WHERE id = ?"
+  ).run(req.params.id);
+
+  audit(req.user.id, 'incident_resolved', 'Manually resolved incident', req.ip);
+  res.json({ message: 'Incident resolved' });
+});
+
+// ─── Scheduled Operations ───────────────────────────────────
+
+/**
+ * POST /api/v1/schedules — create a scheduled operation
+ */
+router.post('/schedules', authenticate, requireRole('admin', 'operator'), (req, res) => {
+  const { name, server_ids, command, cron_expr, enabled } = req.body;
+
+  if (!name || !command || !cron_expr) {
+    return res.status(400).json({ error: 'Name, command, and cron expression required' });
+  }
+
+  const id = crypto.randomUUID();
+  const serverIdsStr = !server_ids || server_ids === '*' ? '*' : JSON.stringify(server_ids);
+  const nextRun = calculateNextRun(cron_expr);
+
+  db.prepare(`
+    INSERT INTO scheduled_ops (id, name, server_ids, command, cron_expr, enabled, created_by, next_run)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, name, serverIdsStr, command, cron_expr, enabled !== false ? 1 : 0, req.user.id, nextRun);
+
+  audit(req.user.id, 'schedule_created', `Created schedule: ${name}`, req.ip);
+  res.status(201).json({ id, name, next_run: nextRun });
+});
+
+/**
+ * GET /api/v1/schedules — list all scheduled operations
+ */
+router.get('/schedules', authenticate, (req, res) => {
+  const schedules = db.prepare(`
+    SELECT s.*, u.username as created_by_username
+    FROM scheduled_ops s
+    LEFT JOIN users u ON u.id = s.created_by
+    ORDER BY s.created_at DESC
+  `).all();
+  res.json(schedules);
+});
+
+/**
+ * PUT /api/v1/schedules/:id — update a scheduled operation
+ */
+router.put('/schedules/:id', authenticate, requireRole('admin', 'operator'), (req, res) => {
+  const sched = db.prepare('SELECT * FROM scheduled_ops WHERE id = ?').get(req.params.id);
+  if (!sched) return res.status(404).json({ error: 'Schedule not found' });
+
+  const { name, server_ids, command, cron_expr, enabled } = req.body;
+  const newName = name || sched.name;
+  const newCommand = command || sched.command;
+  const newCron = cron_expr || sched.cron_expr;
+  const newEnabled = enabled !== undefined ? (enabled ? 1 : 0) : sched.enabled;
+  const newServerIds = server_ids !== undefined
+    ? (server_ids === '*' ? '*' : JSON.stringify(server_ids))
+    : sched.server_ids;
+  const nextRun = calculateNextRun(newCron);
+
+  db.prepare(`
+    UPDATE scheduled_ops SET name = ?, server_ids = ?, command = ?, cron_expr = ?, enabled = ?, next_run = ?
+    WHERE id = ?
+  `).run(newName, newServerIds, newCommand, newCron, newEnabled, nextRun, req.params.id);
+
+  audit(req.user.id, 'schedule_updated', `Updated schedule: ${newName}`, req.ip);
+  res.json({ message: 'Schedule updated' });
+});
+
+/**
+ * DELETE /api/v1/schedules/:id — delete a scheduled operation
+ */
+router.delete('/schedules/:id', authenticate, requireRole('admin', 'operator'), (req, res) => {
+  const sched = db.prepare('SELECT name FROM scheduled_ops WHERE id = ?').get(req.params.id);
+  if (!sched) return res.status(404).json({ error: 'Schedule not found' });
+
+  db.prepare('DELETE FROM scheduled_ops WHERE id = ?').run(req.params.id);
+  audit(req.user.id, 'schedule_deleted', `Deleted schedule: ${sched.name}`, req.ip);
+  res.json({ message: 'Schedule deleted' });
+});
+
+// ─── Webhooks ───────────────────────────────────────────────
+
+/**
+ * POST /api/v1/webhooks — create a webhook
+ */
+router.post('/webhooks', authenticate, requireRole('admin'), (req, res) => {
+  const { name, url, events, enabled } = req.body;
+
+  if (!name || !url) {
+    return res.status(400).json({ error: 'Name and URL required' });
+  }
+
+  const id = crypto.randomUUID();
+  db.prepare(
+    'INSERT INTO webhooks (id, name, url, events, enabled, created_by) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(id, name, url, JSON.stringify(events || []), enabled !== false ? 1 : 0, req.user.id);
+
+  audit(req.user.id, 'webhook_created', `Created webhook: ${name}`, req.ip);
+  res.status(201).json({ id, name });
+});
+
+/**
+ * GET /api/v1/webhooks — list webhooks
+ */
+router.get('/webhooks', authenticate, (req, res) => {
+  const webhooks = db.prepare(`
+    SELECT w.*, u.username as created_by_username
+    FROM webhooks w
+    LEFT JOIN users u ON u.id = w.created_by
+    ORDER BY w.created_at DESC
+  `).all();
+  res.json(webhooks);
+});
+
+/**
+ * PUT /api/v1/webhooks/:id — update a webhook
+ */
+router.put('/webhooks/:id', authenticate, requireRole('admin'), (req, res) => {
+  const wh = db.prepare('SELECT * FROM webhooks WHERE id = ?').get(req.params.id);
+  if (!wh) return res.status(404).json({ error: 'Webhook not found' });
+
+  const { name, url, events, enabled } = req.body;
+  db.prepare(`
+    UPDATE webhooks SET name = ?, url = ?, events = ?, enabled = ? WHERE id = ?
+  `).run(
+    name || wh.name,
+    url || wh.url,
+    events !== undefined ? JSON.stringify(events) : wh.events,
+    enabled !== undefined ? (enabled ? 1 : 0) : wh.enabled,
+    req.params.id
+  );
+
+  audit(req.user.id, 'webhook_updated', `Updated webhook: ${name || wh.name}`, req.ip);
+  res.json({ message: 'Webhook updated' });
+});
+
+/**
+ * DELETE /api/v1/webhooks/:id — delete a webhook
+ */
+router.delete('/webhooks/:id', authenticate, requireRole('admin'), (req, res) => {
+  const wh = db.prepare('SELECT name FROM webhooks WHERE id = ?').get(req.params.id);
+  if (!wh) return res.status(404).json({ error: 'Webhook not found' });
+
+  db.prepare('DELETE FROM webhooks WHERE id = ?').run(req.params.id);
+  audit(req.user.id, 'webhook_deleted', `Deleted webhook: ${wh.name}`, req.ip);
+  res.json({ message: 'Webhook deleted' });
+});
+
+/**
+ * POST /api/v1/webhooks/:id/test — send a test notification
+ */
+router.post('/webhooks/:id/test', authenticate, requireRole('admin'), async (req, res) => {
+  const wh = db.prepare('SELECT * FROM webhooks WHERE id = ?').get(req.params.id);
+  if (!wh) return res.status(404).json({ error: 'Webhook not found' });
+
+  try {
+    await sendTestWebhook(wh);
+    res.json({ message: 'Test notification sent' });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to send test: ' + e.message });
+  }
+});
+
+/**
+ * GET /api/v1/webhooks/events — list available webhook events
+ */
+router.get('/webhooks/events', authenticate, (_req, res) => {
+  res.json(WEBHOOK_EVENTS);
+});
+
+// ─── Templates ──────────────────────────────────────────────
+
+/**
+ * GET /api/v1/templates — list all server templates
+ */
+router.get('/templates', authenticate, (_req, res) => {
+  res.json(getTemplates());
+});
+
+/**
+ * GET /api/v1/templates/:id — get a specific template
+ */
+router.get('/templates/:id', authenticate, (req, res) => {
+  const template = getTemplate(req.params.id);
+  if (!template) return res.status(404).json({ error: 'Template not found' });
+  res.json(template);
+});
+
+// ─── Fleet Command ──────────────────────────────────────────
+
+/**
+ * POST /api/v1/fleet/command — send a command to multiple servers
+ */
+router.post('/fleet/command', authenticate, requireRole('admin', 'operator'), async (req, res) => {
+  const { command, server_ids } = req.body;
+
+  if (!command) return res.status(400).json({ error: 'Command required' });
+
+  let targetServers;
+  if (!server_ids || server_ids === '*') {
+    targetServers = db.prepare(
+      'SELECT id, name, gateway_url, gateway_token, status FROM servers'
+    ).all();
+  } else {
+    const ids = Array.isArray(server_ids) ? server_ids : [server_ids];
+    const placeholders = ids.map(() => '?').join(',');
+    targetServers = db.prepare(
+      `SELECT id, name, gateway_url, gateway_token, status FROM servers WHERE id IN (${placeholders})`
+    ).all(...ids);
+  }
+
+  const results = [];
+  for (const server of targetServers) {
+    if (server.status === 'offline' || !server.gateway_url || !server.gateway_token) {
+      results.push({ server_id: server.id, server_name: server.name, status: 'skipped', reason: 'offline or no gateway' });
+      continue;
+    }
+    results.push({ server_id: server.id, server_name: server.name, status: 'sent' });
+    // Fire command asynchronously
+    sendFleetCommand(server, command);
+  }
+
+  audit(req.user.id, 'fleet_command', `Fleet command sent to ${results.filter(r => r.status === 'sent').length} servers: ${command.slice(0, 100)}`, req.ip);
+  res.json({ results, command });
+});
+
+/**
+ * Send a fleet command to a single server via WebSocket
+ */
+async function sendFleetCommand(server, command) {
+  try {
+    const { WebSocket } = await import('ws');
+    const gwUrl = server.gateway_url.replace(/^http/, 'ws').replace(/\/$/, '');
+
+    const ws = new WebSocket(gwUrl);
+    const timeout = setTimeout(() => ws.close(), 15_000);
+
+    ws.on('open', () => {
+      ws.send(JSON.stringify({
+        type: 'req', id: 'connect', method: 'connect',
+        params: {
+          minProtocol: 3, maxProtocol: 3,
+          client: { id: 'fleet-cmd', displayName: 'Fleet Command', version: '1.0.0', platform: 'server', mode: 'webchat' },
+          scopes: ['operator.admin'],
+          auth: { token: server.gateway_token }
+        }
+      }));
+    });
+
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === 'res' && msg.id === 'connect' && msg.ok) {
+          ws.send(JSON.stringify({
+            type: 'req', method: 'chat.send', id: 'fleet-' + crypto.randomUUID(),
+            params: {
+              sessionKey: 'agent:main:webchat',
+              message: command,
+              idempotencyKey: crypto.randomUUID()
+            }
+          }));
+          setTimeout(() => ws.close(), 5000);
+        }
+        if (msg.type === 'event' && msg.event === 'connect.challenge') {
+          ws.send(JSON.stringify({
+            type: 'req', id: 'connect', method: 'connect',
+            params: {
+              minProtocol: 3, maxProtocol: 3,
+              client: { id: 'fleet-cmd', displayName: 'Fleet Command', version: '1.0.0', platform: 'server', mode: 'webchat' },
+              scopes: ['operator.admin'],
+              auth: { token: server.gateway_token }
+            }
+          }));
+        }
+      } catch {}
+    });
+
+    ws.on('error', () => {});
+    ws.on('close', () => clearTimeout(timeout));
+  } catch (err) {
+    console.error(`[Fleet] Failed to send to ${server.name}:`, err.message);
+  }
+}
 
 // ─── Centralized Backups ────────────────────────────────────
 

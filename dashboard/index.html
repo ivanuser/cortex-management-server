@@ -668,6 +668,58 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 .empty-state h3 { font-size: 1.1rem; color: var(--text-dim); }
 .empty-state p { font-size: 0.85rem; text-align: center; max-width: 400px; line-height: 1.6; }
 
+/* ─── Incidents ─────────────────────── */
+.incident-badge {
+  position: absolute; top: 8px; right: 8px;
+  padding: 0.15rem 0.5rem; border-radius: 12px;
+  font-size: 0.6rem; font-weight: 700; z-index: 2;
+}
+.incident-badge.critical { background: var(--red-bg); color: var(--red); border: 1px solid rgba(255,107,107,0.3); }
+.incident-badge.warning { background: var(--yellow-bg); color: var(--yellow); border: 1px solid rgba(254,202,87,0.3); }
+.severity-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.4rem; }
+.severity-dot.critical { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.severity-dot.warning { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+.severity-dot.info { background: var(--blue); box-shadow: 0 0 6px var(--blue); }
+.incident-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 1rem 1.25rem; margin-bottom: 0.5rem; transition: all 0.15s;
+  display: flex; align-items: center; gap: 1rem;
+}
+.incident-card.resolved { opacity: 0.6; }
+.incident-card:hover { border-color: var(--border-glow); }
+.incident-info { flex: 1; }
+.incident-info .title { font-size: 0.85rem; font-weight: 600; margin-bottom: 0.2rem; }
+.incident-info .meta { font-size: 0.7rem; color: var(--text-muted); }
+
+/* ─── Toggle Switch ─────────────────── */
+.toggle-switch {
+  position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; inset: 0; background: var(--surface2); border-radius: 20px;
+  border: 1px solid var(--border); transition: all 0.2s;
+}
+.toggle-slider::before {
+  content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%;
+  left: 2px; bottom: 2px; background: var(--text-muted); transition: all 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--green-bg); border-color: var(--green); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); background: var(--green); }
+
+/* ─── Fleet Command Modal ───────────── */
+.fleet-cmd-results {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px;
+  margin-top: 1rem; max-height: 300px; overflow-y: auto;
+}
+.fleet-cmd-result {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem;
+}
+.fleet-cmd-result .name { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.3rem; }
+.fleet-cmd-result .status { font-size: 0.7rem; }
+.fleet-cmd-result .status.sent { color: var(--green); }
+.fleet-cmd-result .status.skipped { color: var(--yellow); }
+
 /* ─── Responsive ────────────────────── */
 @media (max-width: 768px) {
   .sidebar { display: none; }
@@ -758,6 +810,17 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
         </div>
         <div class="nav-sub-item" data-page="health" onclick="navigate('health')">
           <span class="icon">📈</span> Health
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-title">Operations</div>
+        <div class="nav-item" data-page="schedules" onclick="navigate('schedules')">
+          <span class="icon">📅</span> Schedules
+        </div>
+        <div class="nav-item" data-page="incidents-page" onclick="navigate('incidents-page')">
+          <span class="icon">🚨</span> Incidents
+          <span class="badge-count" id="incident-count" style="display:none;background:var(--red-bg);color:var(--red)">0</span>
         </div>
       </div>
 
@@ -865,6 +928,16 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
       <!-- Audit Page -->
       <div class="page" id="page-audit">
         <div class="page-scroll" id="audit-content"></div>
+      </div>
+
+      <!-- Schedules Page -->
+      <div class="page" id="page-schedules">
+        <div class="page-scroll" id="schedules-content"></div>
+      </div>
+
+      <!-- Incidents Page -->
+      <div class="page" id="page-incidents-page">
+        <div class="page-scroll" id="incidents-page-content"></div>
       </div>
     </div>
   </div>
@@ -1061,7 +1134,8 @@ function navigate(page) {
   const renderers = {
     fleet: renderFleet, add: renderAdd, chat: renderChat, skills: renderSkills,
     terminal: renderTerminal, health: renderHealth, users: renderUsers,
-    settings: renderSettings, audit: renderAudit
+    settings: renderSettings, audit: renderAudit, schedules: renderSchedules,
+    'incidents-page': renderIncidentsPage
   };
   if (renderers[page]) renderers[page]();
 
