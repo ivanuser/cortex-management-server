@@ -1902,11 +1902,22 @@ async function renderFleet() {
       return;
     }
 
+    // Update global incident count
+    const totalIncidents = servers.reduce((sum, s) => sum + (s.active_incidents || 0), 0);
+    const incidentBadge = $('incident-count');
+    if (totalIncidents > 0) {
+      incidentBadge.textContent = totalIncidents;
+      incidentBadge.style.display = '';
+    } else {
+      incidentBadge.style.display = 'none';
+    }
+
     let html = `
       <div class="section-header">
         <h2>🏠 <span>Fleet</span> Overview</h2>
         <div style="display:flex;align-items:center;gap:1rem">
           <span style="color:var(--text-muted);font-size:0.78rem">${servers.length} server${servers.length !== 1 ? 's' : ''}</span>
+          <button class="btn-skills" onclick="showFleetCommandModal()">⚡ Fleet Command</button>
           <button class="btn-skills" onclick="navigate('add')">➕ Add Server</button>
         </div>
       </div>
@@ -1918,7 +1929,9 @@ async function renderFleet() {
       const diskPct = s.disk_percent ?? null;
       const isSelected = selectedServer?.id === s.id;
 
+      const incidentCount = s.active_incidents || 0;
       html += `<div class="server-card" style="${isSelected ? 'border-color:var(--accent);box-shadow:0 0 20px var(--accent-glow)' : ''}">
+        ${incidentCount > 0 ? `<span class="incident-badge critical">🚨 ${incidentCount} incident${incidentCount > 1 ? 's' : ''}</span>` : ''}
         <div class="server-card-header">
           <div class="server-card-name">
             <span class="status-dot ${s.status || 'unknown'}"></span>
@@ -2044,6 +2057,28 @@ async function renderHealth() {
       html += '<div class="form-card" style="margin-top:1rem"><p class="no-data">No health history data available yet. The health poller will collect data periodically.</p></div>';
     }
 
+    // Incidents section
+    try {
+      const incidents = await api(`/incidents?server_id=${s.id}&limit=20`);
+      if (incidents.length > 0) {
+        html += `<div style="margin-top:1.5rem">
+          <h3 style="margin-bottom:1rem">🚨 Recent Incidents</h3>`;
+        for (const inc of incidents) {
+          const severityColor = inc.severity === 'critical' ? 'var(--red)' : inc.severity === 'warning' ? 'var(--yellow)' : 'var(--blue)';
+          html += `<div class="incident-card ${inc.resolved ? 'resolved' : ''}">
+            <span class="severity-dot ${inc.severity}"></span>
+            <div class="incident-info">
+              <div class="title" style="color:${severityColor}">${esc(inc.type.replace(/_/g, ' ').toUpperCase())}</div>
+              <div class="meta">${esc(inc.message)} — ${timeAgo(inc.created_at)}${inc.resolved ? ' (resolved)' : ''}</div>
+              ${inc.auto_action ? `<div class="meta" style="color:var(--accent-light)">Auto: ${esc(inc.auto_action)}</div>` : ''}
+            </div>
+            ${!inc.resolved ? `<button class="btn-ghost" style="font-size:0.7rem" onclick="resolveIncident('${inc.id}')">Resolve</button>` : ''}
+          </div>`;
+        }
+        html += '</div>';
+      }
+    } catch {}
+
     // Backups section
     const backupsHtml = await renderBackups(s.id);
     html += backupsHtml;
@@ -2144,6 +2179,13 @@ async function renderAdd() {
         <input type="password" id="token-apikey" placeholder="sk-ant-... or setup token">
         <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.25rem">This key will be injected into the install script and configured on the server automatically.</div>
       </div>
+      <div class="form-group">
+        <label>Server Template (optional)</label>
+        <select id="token-template" style="width:100%;padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.85rem" onchange="showTemplatePreview()">
+          <option value="">No template — configure manually</option>
+        </select>
+        <div id="template-preview" style="margin-top:0.5rem;display:none"></div>
+      </div>
       <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="generateToken()">Generate Token</button>
       <div id="token-result"></div>
     </div>
@@ -2182,6 +2224,43 @@ async function renderAdd() {
       <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="manualAdd()">Add Server</button>
     </div>
     ${tokensHtml}`;
+
+  // Load templates into dropdown
+  try {
+    const templates = await api('/templates');
+    const select = $('token-template');
+    if (select) {
+      for (const t of templates) {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = `${t.icon} ${t.name} — ${t.description}`;
+        select.appendChild(opt);
+      }
+    }
+  } catch {}
+}
+
+async function showTemplatePreview() {
+  const templateId = $('token-template')?.value;
+  const preview = $('template-preview');
+  if (!templateId || !preview) { if (preview) preview.style.display = 'none'; return; }
+
+  try {
+    const t = await api(`/templates/${templateId}`);
+    preview.style.display = 'block';
+    preview.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0.75rem">
+      <div style="font-size:0.82rem;font-weight:600;margin-bottom:0.5rem">${t.icon} ${esc(t.name)}</div>
+      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.5rem">${esc(t.description)}</div>
+      <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.25rem">Skills to install:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:0.25rem">
+        ${t.skills.map(s => `<span class="badge" style="background:var(--accent-glow);color:var(--accent-light)">${s}</span>`).join('')}
+      </div>
+      <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.5rem">Setup commands:</div>
+      <ul style="font-size:0.72rem;color:var(--text-dim);margin:0.25rem 0 0 1rem">
+        ${t.setup_commands.map(c => `<li>${esc(c)}</li>`).join('')}
+      </ul>
+    </div>`;
+  } catch { preview.style.display = 'none'; }
 }
 
 async function generateToken() {
@@ -2189,10 +2268,11 @@ async function generateToken() {
   const hours = $('token-hours').value;
   const provider = $('token-provider').value;
   const apiKey = $('token-apikey').value.trim();
+  const templateId = $('token-template')?.value || '';
   try {
     const data = await api('/tokens', {
       method: 'POST',
-      body: JSON.stringify({ server_name: name, expires_hours: hours, provider, api_key: apiKey })
+      body: JSON.stringify({ server_name: name, expires_hours: hours, provider, api_key: apiKey, template_id: templateId })
     });
     const installUrl = `${location.origin}/install.sh?token=${data.token}`;
     $('token-result').innerHTML = `
@@ -2374,6 +2454,8 @@ async function renderSettings() {
   const el = $('settings-content');
   try {
     const me = await api('/auth/me');
+    const webhooksHtml = await renderWebhooksSection();
+
     el.innerHTML = `
       <div class="section-header"><h2>⚙️ <span>Settings</span></h2></div>
       <div class="settings-grid">
@@ -2408,12 +2490,14 @@ async function renderSettings() {
         <div class="form-card">
           <h3>Server Info</h3>
           <div style="font-size:0.8rem;color:var(--text-dim);line-height:2.2">
-            <div>Version: <strong style="color:var(--text)">1.0.0</strong></div>
+            <div>Version: <strong style="color:var(--text)">0.5.0</strong></div>
             <div>User: <strong style="color:var(--text)">${esc(me.username)}</strong></div>
             <div>Role: <strong style="color:var(--text)">${esc(me.role)}</strong></div>
             <div>Created: <strong style="color:var(--text)">${me.created_at}</strong></div>
           </div>
         </div>
+
+        ${webhooksHtml}
       </div>`;
   } catch (e) { el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`; }
 }
@@ -2651,6 +2735,419 @@ async function deleteBackup(backupId, serverId) {
     await api(`/backups/${backupId}`, { method: 'DELETE' });
     toast('Backup deleted');
     if (currentPage === 'health') renderHealth();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// INCIDENTS PAGE
+// ═══════════════════════════════════════════════════════════
+async function renderIncidentsPage() {
+  const el = $('incidents-page-content');
+  el.innerHTML = '<p style="color:var(--text-dim)">Loading...</p>';
+
+  try {
+    const incidents = await api('/incidents?limit=200');
+    const active = incidents.filter(i => !i.resolved);
+    const resolved = incidents.filter(i => i.resolved);
+
+    let html = `<div class="section-header">
+      <h2>🚨 <span>Incidents</span></h2>
+      <span style="color:var(--text-muted);font-size:0.78rem">${active.length} active, ${resolved.length} resolved</span>
+    </div>`;
+
+    if (active.length > 0) {
+      html += `<h3 style="margin-bottom:0.75rem;font-size:0.85rem;color:var(--red)">Active Incidents</h3>`;
+      for (const inc of active) {
+        const severityColor = inc.severity === 'critical' ? 'var(--red)' : inc.severity === 'warning' ? 'var(--yellow)' : 'var(--blue)';
+        html += `<div class="incident-card">
+          <span class="severity-dot ${inc.severity}"></span>
+          <div class="incident-info">
+            <div class="title" style="color:${severityColor}">${esc(inc.type.replace(/_/g, ' ').toUpperCase())} — ${esc(inc.server_name)}</div>
+            <div class="meta">${esc(inc.message)} — ${timeAgo(inc.created_at)}</div>
+            ${inc.auto_action ? `<div class="meta" style="color:var(--accent-light)">Auto: ${esc(inc.auto_action)}</div>` : ''}
+          </div>
+          <button class="btn-ghost" style="font-size:0.7rem" onclick="resolveIncident('${inc.id}')">Resolve</button>
+        </div>`;
+      }
+    } else {
+      html += `<div class="form-card" style="margin-bottom:1.5rem"><p class="no-data" style="text-align:center;padding:1rem">✅ No active incidents — all systems healthy</p></div>`;
+    }
+
+    if (resolved.length > 0) {
+      html += `<h3 style="margin:1.5rem 0 0.75rem;font-size:0.85rem;color:var(--text-dim)">Resolved (${resolved.length})</h3>`;
+      for (const inc of resolved.slice(0, 50)) {
+        html += `<div class="incident-card resolved">
+          <span class="severity-dot ${inc.severity}"></span>
+          <div class="incident-info">
+            <div class="title">${esc(inc.type.replace(/_/g, ' '))} — ${esc(inc.server_name)}</div>
+            <div class="meta">${esc(inc.message)} — ${timeAgo(inc.created_at)} → resolved ${timeAgo(inc.resolved_at)}</div>
+          </div>
+        </div>`;
+      }
+    }
+
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`; }
+}
+
+async function resolveIncident(id) {
+  try {
+    await api(`/incidents/${id}/resolve`, { method: 'PUT' });
+    toast('Incident resolved');
+    if (currentPage === 'incidents-page') renderIncidentsPage();
+    else if (currentPage === 'health') renderHealth();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SCHEDULES PAGE
+// ═══════════════════════════════════════════════════════════
+const schedulePresets = [
+  { name: 'Daily Security Audit', command: 'Run a full security audit — check SSH config, firewall rules, open ports, and user accounts', cron: '0 3 * * *' },
+  { name: 'Weekly Updates Check', command: 'Check for available system updates and list them', cron: '0 6 * * 1' },
+  { name: 'Hourly Health Check', command: 'Report system health — CPU, memory, disk usage, uptime, and any anomalies', cron: '0 * * * *' },
+];
+
+async function renderSchedules() {
+  const el = $('schedules-content');
+  el.innerHTML = '<p style="color:var(--text-dim)">Loading...</p>';
+
+  try {
+    const schedules = await api('/schedules');
+    const servers = await api('/servers');
+
+    let html = `<div class="section-header">
+      <h2>📅 <span>Scheduled</span> Operations</h2>
+      <button class="btn-skills primary" onclick="showAddScheduleModal()">➕ Add Schedule</button>
+    </div>`;
+
+    if (schedules.length === 0) {
+      html += `<div class="empty-state" style="height:auto;padding:3rem">
+        <div class="icon">📅</div>
+        <h3>No Scheduled Operations</h3>
+        <p>Set up automated tasks that run on a cron schedule across your fleet.</p>
+        <div style="margin-top:1rem">
+          <h4 style="font-size:0.78rem;color:var(--text-dim);margin-bottom:0.75rem">Quick Presets:</h4>
+          ${schedulePresets.map(p => `<button class="btn-skills" style="margin:0.25rem" onclick="presetSchedule('${esc(p.name)}','${esc(p.command)}','${p.cron}')">${p.name}</button>`).join('')}
+        </div>
+      </div>`;
+    } else {
+      html += `<div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Name</th><th>Command</th><th>Schedule</th><th>Targets</th><th>Last Run</th><th>Next Run</th><th>Enabled</th><th>Actions</th></tr></thead><tbody>`;
+      for (const s of schedules) {
+        let targetLabel = 'All servers';
+        if (s.server_ids !== '*') {
+          try {
+            const ids = JSON.parse(s.server_ids);
+            targetLabel = `${ids.length} server${ids.length !== 1 ? 's' : ''}`;
+          } catch { targetLabel = s.server_ids; }
+        }
+        html += `<tr>
+          <td><strong>${esc(s.name)}</strong></td>
+          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc(s.command)}">${esc(s.command)}</td>
+          <td><code style="font-size:0.7rem">${esc(s.cron_expr)}</code></td>
+          <td>${targetLabel}</td>
+          <td>${timeAgo(s.last_run)}</td>
+          <td>${s.next_run ? timeAgo(s.next_run) : '—'}</td>
+          <td>
+            <label class="toggle-switch">
+              <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleSchedule('${s.id}', this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+          </td>
+          <td><button class="btn-ghost" style="font-size:0.7rem;color:var(--red)" onclick="deleteSchedule('${s.id}','${esc(s.name)}')">Delete</button></td>
+        </tr>`;
+      }
+      html += '</tbody></table></div>';
+
+      html += `<div style="margin-top:1.5rem">
+        <h4 style="font-size:0.78rem;color:var(--text-dim);margin-bottom:0.75rem">Quick Presets:</h4>
+        ${schedulePresets.map(p => `<button class="btn-skills" style="margin:0.25rem" onclick="presetSchedule('${esc(p.name)}','${esc(p.command)}','${p.cron}')">${p.name}</button>`).join('')}
+      </div>`;
+    }
+
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`; }
+}
+
+function presetSchedule(name, command, cron) {
+  showAddScheduleModal(name, command, cron);
+}
+
+async function showAddScheduleModal(prefillName, prefillCmd, prefillCron) {
+  let servers = [];
+  try { servers = await api('/servers'); } catch {}
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:560px">
+      <h3>📅 Add Scheduled Operation</h3>
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="sched-name" placeholder="e.g., Daily security audit" value="${esc(prefillName || '')}">
+      </div>
+      <div class="form-group">
+        <label>Command</label>
+        <textarea id="sched-command" rows="3" style="width:100%;resize:vertical" placeholder="e.g., Run a full security audit">${esc(prefillCmd || '')}</textarea>
+      </div>
+      <div class="form-group">
+        <label>Cron Expression (min hour dom mon dow)</label>
+        <input type="text" id="sched-cron" placeholder="0 3 * * * (daily at 3am)" value="${esc(prefillCron || '')}">
+        <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.25rem">
+          Examples: <code>0 * * * *</code> (hourly) · <code>0 3 * * *</code> (daily 3am) · <code>0 6 * * 1</code> (Mon 6am) · <code>*/30 * * * *</code> (every 30min)
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Target Servers</label>
+        <div style="margin-top:0.25rem">
+          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;cursor:pointer;margin-bottom:0.5rem">
+            <input type="checkbox" id="sched-all-servers" checked onchange="toggleAllSchedServers(this.checked)" style="width:auto"> All servers
+          </label>
+          <div id="sched-server-list" style="display:none;max-height:150px;overflow-y:auto">
+            ${servers.map(s => `<label style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem;cursor:pointer;padding:0.2rem 0">
+              <input type="checkbox" class="sched-server-cb" value="${s.id}" style="width:auto"> ${esc(s.name)}
+            </label>`).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="createSchedule()">Create Schedule</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function toggleAllSchedServers(allChecked) {
+  const list = $('sched-server-list');
+  list.style.display = allChecked ? 'none' : 'block';
+}
+
+async function createSchedule() {
+  const name = $('sched-name')?.value.trim();
+  const command = $('sched-command')?.value.trim();
+  const cron_expr = $('sched-cron')?.value.trim();
+  const allServers = $('sched-all-servers')?.checked;
+
+  if (!name || !command || !cron_expr) { toast('Fill in all fields', 'error'); return; }
+
+  let server_ids = '*';
+  if (!allServers) {
+    const checked = document.querySelectorAll('.sched-server-cb:checked');
+    server_ids = Array.from(checked).map(cb => cb.value);
+    if (server_ids.length === 0) { toast('Select at least one server', 'error'); return; }
+  }
+
+  try {
+    await api('/schedules', { method: 'POST', body: JSON.stringify({ name, command, cron_expr, server_ids }) });
+    toast('Schedule created');
+    document.querySelector('.modal-overlay')?.remove();
+    renderSchedules();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function toggleSchedule(id, enabled) {
+  try {
+    await api(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) });
+    toast(enabled ? 'Schedule enabled' : 'Schedule disabled');
+  } catch (e) { toast(e.message, 'error'); renderSchedules(); }
+}
+
+async function deleteSchedule(id, name) {
+  if (!confirm(`Delete schedule "${name}"?`)) return;
+  try {
+    await api(`/schedules/${id}`, { method: 'DELETE' });
+    toast('Schedule deleted');
+    renderSchedules();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// FLEET COMMAND MODAL
+// ═══════════════════════════════════════════════════════════
+async function showFleetCommandModal() {
+  let servers = [];
+  try { servers = await api('/servers'); } catch {}
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:600px">
+      <h3>⚡ Fleet Command</h3>
+      <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:1rem">Send a command to multiple servers simultaneously.</p>
+      <div class="form-group">
+        <label>Command</label>
+        <textarea id="fleet-cmd-input" rows="3" style="width:100%;resize:vertical" placeholder="e.g., Report system health status"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Target Servers</label>
+        <div style="margin-top:0.25rem">
+          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;cursor:pointer;margin-bottom:0.5rem">
+            <input type="checkbox" id="fleet-cmd-all" checked onchange="$('fleet-cmd-servers').style.display=this.checked?'none':'block'" style="width:auto"> All servers
+          </label>
+          <div id="fleet-cmd-servers" style="display:none;max-height:150px;overflow-y:auto">
+            ${servers.map(s => `<label style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem;cursor:pointer;padding:0.2rem 0">
+              <input type="checkbox" class="fleet-cmd-cb" value="${s.id}" style="width:auto">
+              <span class="status-dot ${s.status || 'unknown'}" style="width:8px;height:8px"></span> ${esc(s.name)}
+            </label>`).join('')}
+          </div>
+        </div>
+      </div>
+      <div id="fleet-cmd-results-area"></div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Close</button>
+        <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" id="fleet-cmd-send" onclick="sendFleetCommand()">⚡ Send Command</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function sendFleetCommand() {
+  const command = $('fleet-cmd-input')?.value.trim();
+  if (!command) { toast('Enter a command', 'error'); return; }
+
+  const allServers = $('fleet-cmd-all')?.checked;
+  let server_ids = '*';
+  if (!allServers) {
+    const checked = document.querySelectorAll('.fleet-cmd-cb:checked');
+    server_ids = Array.from(checked).map(cb => cb.value);
+    if (server_ids.length === 0) { toast('Select at least one server', 'error'); return; }
+  }
+
+  $('fleet-cmd-send').disabled = true;
+  $('fleet-cmd-send').textContent = 'Sending...';
+
+  try {
+    const data = await api('/fleet/command', { method: 'POST', body: JSON.stringify({ command, server_ids }) });
+    const resultsArea = $('fleet-cmd-results-area');
+    resultsArea.innerHTML = `<div class="fleet-cmd-results">
+      ${data.results.map(r => `<div class="fleet-cmd-result">
+        <div class="name">${esc(r.server_name)}</div>
+        <div class="status ${r.status}">${r.status === 'sent' ? '✅ Command sent' : '⚠️ ' + (r.reason || 'Skipped')}</div>
+      </div>`).join('')}
+    </div>`;
+    toast(`Command sent to ${data.results.filter(r => r.status === 'sent').length} servers`);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+
+  $('fleet-cmd-send').disabled = false;
+  $('fleet-cmd-send').textContent = '⚡ Send Command';
+}
+
+// ═══════════════════════════════════════════════════════════
+// WEBHOOKS (in Settings page)
+// ═══════════════════════════════════════════════════════════
+async function renderWebhooksSection() {
+  try {
+    const webhooks = await api('/webhooks');
+    let html = `<div class="form-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3>🔔 Webhooks</h3>
+        <button class="btn-skills primary" style="font-size:0.75rem" onclick="showAddWebhookModal()">➕ Add Webhook</button>
+      </div>`;
+
+    if (webhooks.length === 0) {
+      html += `<p class="no-data">No webhooks configured. Add one to receive notifications for server events.</p>`;
+    } else {
+      for (const wh of webhooks) {
+        const events = JSON.parse(wh.events || '[]');
+        html += `<div class="backup-item">
+          <div class="backup-info" style="flex:1">
+            <div class="title">${esc(wh.name)}
+              <label class="toggle-switch" style="margin-left:0.5rem;vertical-align:middle">
+                <input type="checkbox" ${wh.enabled ? 'checked' : ''} onchange="toggleWebhook('${wh.id}', this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="meta" style="font-family:'JetBrains Mono',monospace;font-size:0.65rem">${esc(wh.url.length > 60 ? wh.url.slice(0, 60) + '...' : wh.url)}</div>
+            <div class="meta">${events.map(e => `<span class="badge" style="margin-right:0.25rem;background:var(--accent-glow);color:var(--accent-light)">${e}</span>`).join('')}</div>
+          </div>
+          <div class="backup-actions">
+            <button class="btn-ghost" style="font-size:0.7rem" onclick="testWebhook('${wh.id}')">🧪 Test</button>
+            <button class="btn-ghost" style="font-size:0.7rem;color:var(--red)" onclick="deleteWebhook('${wh.id}','${esc(wh.name)}')">🗑️</button>
+          </div>
+        </div>`;
+      }
+    }
+    html += '</div>';
+    return html;
+  } catch { return ''; }
+}
+
+async function showAddWebhookModal() {
+  const allEvents = ['server_offline', 'server_online', 'incident_critical', 'incident_warning', 'backup_complete', 'scheduled_op_complete'];
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:520px">
+      <h3>🔔 Add Webhook</h3>
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="wh-name" placeholder="e.g., Discord Alerts">
+      </div>
+      <div class="form-group">
+        <label>Webhook URL</label>
+        <input type="text" id="wh-url" placeholder="https://discord.com/api/webhooks/...">
+        <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.25rem">Supports Discord webhook format automatically</div>
+      </div>
+      <div class="form-group">
+        <label>Events</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.3rem;margin-top:0.25rem">
+          ${allEvents.map(e => `<label style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem;cursor:pointer">
+            <input type="checkbox" class="wh-event-cb" value="${e}" checked style="width:auto"> ${e.replace(/_/g, ' ')}
+          </label>`).join('')}
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="createWebhook()">Create Webhook</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function createWebhook() {
+  const name = $('wh-name')?.value.trim();
+  const url = $('wh-url')?.value.trim();
+  if (!name || !url) { toast('Fill in name and URL', 'error'); return; }
+
+  const events = Array.from(document.querySelectorAll('.wh-event-cb:checked')).map(cb => cb.value);
+  if (events.length === 0) { toast('Select at least one event', 'error'); return; }
+
+  try {
+    await api('/webhooks', { method: 'POST', body: JSON.stringify({ name, url, events }) });
+    toast('Webhook created');
+    document.querySelector('.modal-overlay')?.remove();
+    renderSettings();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function toggleWebhook(id, enabled) {
+  try {
+    await api(`/webhooks/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) });
+    toast(enabled ? 'Webhook enabled' : 'Webhook disabled');
+  } catch (e) { toast(e.message, 'error'); renderSettings(); }
+}
+
+async function testWebhook(id) {
+  try {
+    await api(`/webhooks/${id}/test`, { method: 'POST' });
+    toast('Test notification sent');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteWebhook(id, name) {
+  if (!confirm(`Delete webhook "${name}"?`)) return;
+  try {
+    await api(`/webhooks/${id}`, { method: 'DELETE' });
+    toast('Webhook deleted');
+    renderSettings();
   } catch (e) { toast(e.message, 'error'); }
 }
 

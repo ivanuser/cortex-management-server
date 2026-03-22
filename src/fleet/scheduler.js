@@ -6,7 +6,7 @@ let schedulerTimer = null;
 
 /**
  * Simple cron parser — supports: minute hour day-of-month month day-of-week
- * Special values: *, */N (every N)
+ * Special values: * (wildcard), step notation (every N)
  * Returns true if the cron expression matches the given date
  */
 function cronMatches(cronExpr, date) {
