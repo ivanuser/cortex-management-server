@@ -363,10 +363,10 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 .attach-remove { cursor: pointer; color: var(--red); font-size: 0.8rem; margin-left: 0.25rem; }
 .attach-remove:hover { color: #ff8888; }
 .input-box {
-  flex: 1; padding: 0.7rem 1rem; background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius); color: var(--text); font-size: 0.85rem; outline: none;
-  resize: none; min-height: 42px; max-height: 140px; font-family: inherit;
-  transition: border-color 0.2s;
+  flex: 1; padding: 0.75rem 1rem; background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text); font-size: 0.9rem; outline: none;
+  resize: vertical; min-height: 48px; max-height: 200px; font-family: inherit;
+  transition: border-color 0.2s; line-height: 1.5; overflow-y: auto;
 }
 .input-box:focus { border-color: var(--accent); }
 .btn-send {
@@ -1259,7 +1259,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
             <div class="input-row">
               <button class="btn-attach" onclick="document.getElementById('file-input').click()" title="Attach file">📎</button>
               <input type="file" id="file-input" multiple accept="image/*,.pdf,.txt,.md,.json,.yaml,.yml,.csv,.log,.conf,.xml,.sh,.py,.js,.ts" style="display:none" onchange="handleFiles(this.files)">
-              <textarea class="input-box" id="chat-box" rows="1" placeholder="Ask anything…" onkeydown="onChatKey(event)"></textarea>
+              <textarea class="input-box" id="chat-box" rows="2" placeholder="Ask anything… (Shift+Enter for new line)" onkeydown="onChatKey(event)" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,200)+'px'"></textarea>
               <button class="btn-send" id="send-btn" onclick="doSendChat()">Send</button>
             </div>
           </div>
@@ -2221,7 +2221,7 @@ function onChatKey(e) {
   setTimeout(() => {
     const t = e.target;
     t.style.height = 'auto';
-    t.style.height = Math.min(t.scrollHeight, 140) + 'px';
+    t.style.height = Math.min(t.scrollHeight, 200) + 'px';
   }, 0);
 }
 
