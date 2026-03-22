@@ -4,11 +4,9 @@ import { fireWebhookEvent } from './webhooks.js';
 
 let schedulerTimer = null;
 
-/**
- * Simple cron parser — supports: minute hour day-of-month month day-of-week
- * Special values: * (wildcard), step notation (every N)
- * Returns true if the cron expression matches the given date
- */
+// Simple cron parser — supports: minute hour day-of-month month day-of-week
+// Special values: wildcard (*), step notation (every N, e.g. */5)
+// Returns true if the cron expression matches the given date
 function cronMatches(cronExpr, date) {
   const parts = cronExpr.trim().split(/\s+/);
   if (parts.length !== 5) return false;
