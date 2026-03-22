@@ -2202,7 +2202,7 @@ function handleAvatarUpload(input) {
       type: 'req',
       method: 'chat.send',
       id: 'chat-' + (++wsMsgN),
-      params: { message: 'Copy ~/athena.png to the dashboard directory and respond with just "Avatar updated"', role: 'user' }
+      params: { sessionKey: wsSessionKey || 'agent:main:webchat', message: 'Copy ~/athena.png to the dashboard directory and respond with just "Avatar updated"', idempotencyKey: crypto.randomUUID() }
     }));
     toast('Avatar uploading…');
     // Update preview immediately
