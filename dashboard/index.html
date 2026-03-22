@@ -854,6 +854,152 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   background: var(--blue-bg); border-radius: 8px; display: inline-block; margin-left: 0.3rem;
 }
 
+/* ─── Files Browser ─────────────────── */
+.files-container { display: flex; flex-direction: column; height: 100%; }
+.files-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border);
+  background: var(--surface); flex-shrink: 0;
+}
+.files-toolbar h3 { font-size: 0.95rem; }
+.files-toolbar-actions { display: flex; gap: 0.5rem; }
+.files-body { display: flex; flex: 1; overflow: hidden; }
+.files-list {
+  width: 280px; border-right: 1px solid var(--border); overflow-y: auto;
+  background: var(--surface); flex-shrink: 0;
+}
+.files-list::-webkit-scrollbar { width: 4px; }
+.files-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.file-group-title {
+  font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--text-muted); padding: 0.6rem 1rem 0.3rem;
+}
+.file-item {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 1rem; cursor: pointer; transition: all 0.15s;
+  font-size: 0.8rem; color: var(--text-dim); border-left: 3px solid transparent;
+}
+.file-item:hover { background: var(--accent-glow); color: var(--text); }
+.file-item.active { background: var(--accent-glow); color: var(--accent-light); border-left-color: var(--accent); }
+.file-item .file-icon { font-size: 0.9rem; flex-shrink: 0; }
+.file-item .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-item.key-file { font-weight: 600; }
+.files-editor {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
+.files-editor-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.6rem 1rem; background: #0d1020; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.files-editor-header .file-path {
+  font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--text-dim);
+}
+.files-editor-header .editor-actions { display: flex; gap: 0.5rem; }
+.files-editor textarea {
+  flex: 1; width: 100%; background: #0a0c14; color: #c8d6e5; border: none;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; line-height: 1.6;
+  padding: 1rem; resize: none; outline: none;
+}
+.files-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); font-size: 0.85rem;
+}
+
+/* ─── Services / Docker / Packages Tables ── */
+.mgmt-container { display: flex; flex-direction: column; height: 100%; }
+.mgmt-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border);
+  background: var(--surface); flex-shrink: 0; flex-wrap: wrap; gap: 0.5rem;
+}
+.mgmt-toolbar h3 { font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; }
+.mgmt-body { flex: 1; overflow-y: auto; padding: 1rem 1.25rem; }
+.mgmt-body::-webkit-scrollbar { width: 6px; }
+.mgmt-body::-webkit-scrollbar-track { background: transparent; }
+.mgmt-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.svc-status {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.15rem 0.5rem; border-radius: 12px; font-size: 0.65rem; font-weight: 600;
+}
+.svc-status.running { background: var(--green-bg); color: var(--green); }
+.svc-status.failed { background: var(--red-bg); color: var(--red); }
+.svc-status.exited { background: var(--red-bg); color: var(--red); }
+.svc-status.restarting { background: var(--yellow-bg); color: var(--yellow); }
+.svc-status.inactive { background: rgba(136,136,160,0.15); color: var(--text-muted); }
+.svc-status .dot { width: 6px; height: 6px; border-radius: 50%; }
+.svc-status.running .dot { background: var(--green); box-shadow: 0 0 4px var(--green); }
+.svc-status.failed .dot { background: var(--red); box-shadow: 0 0 4px var(--red); }
+.svc-status.exited .dot { background: var(--red); }
+.svc-status.restarting .dot { background: var(--yellow); box-shadow: 0 0 4px var(--yellow); animation: connPulse 1s ease-in-out infinite; }
+.svc-status.inactive .dot { background: var(--text-muted); }
+.action-btn {
+  padding: 0.25rem 0.5rem; background: transparent; border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-dim); font-size: 0.65rem; cursor: pointer;
+  transition: all 0.15s; font-weight: 500;
+}
+.action-btn:hover { border-color: var(--accent); color: var(--accent-light); background: var(--accent-glow); }
+.action-btn.danger:hover { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+.mgmt-loading {
+  display: flex; align-items: center; justify-content: center;
+  padding: 3rem; color: var(--text-muted); font-size: 0.85rem;
+}
+.mgmt-loading::after { content: ''; animation: dots 1.5s infinite; }
+.mgmt-notice {
+  display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.25rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 0.82rem; color: var(--text-dim); margin-bottom: 1rem;
+}
+.mgmt-notice .icon { font-size: 1.5rem; }
+
+/* ─── Log Viewer ────────────────────── */
+.log-viewer {
+  flex: 1; overflow-y: auto; padding: 0.75rem 1rem;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+  line-height: 1.6; background: #0a0c14; color: #c8d6e5;
+}
+.log-viewer::-webkit-scrollbar { width: 6px; }
+.log-viewer::-webkit-scrollbar-track { background: transparent; }
+.log-viewer::-webkit-scrollbar-thumb { background: #1e2642; border-radius: 3px; }
+.log-line { white-space: pre-wrap; word-break: break-all; margin-bottom: 0.1rem; }
+.log-line.error { color: var(--red); }
+.log-line.warn { color: var(--yellow); }
+.log-filter-bar {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem;
+  background: #0d1020; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.log-filter-bar select, .log-filter-bar input {
+  padding: 0.35rem 0.6rem; font-size: 0.75rem; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+}
+.log-filter-btn {
+  padding: 0.3rem 0.6rem; background: transparent; border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-dim); font-size: 0.7rem; cursor: pointer;
+  transition: all 0.15s;
+}
+.log-filter-btn:hover, .log-filter-btn.active {
+  border-color: var(--accent); color: var(--accent-light); background: var(--accent-glow);
+}
+.log-filter-btn.active { font-weight: 600; }
+
+/* ─── Network Sections ─────────────── */
+.net-section { margin-bottom: 1.5rem; }
+.net-section h4 {
+  font-size: 0.8rem; font-weight: 700; margin-bottom: 0.75rem;
+  display: flex; align-items: center; gap: 0.5rem; color: var(--text);
+}
+.net-section h4 .icon { font-size: 1rem; }
+.net-stat-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px; margin-bottom: 1.5rem;
+}
+.net-stat-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.75rem 1rem; text-align: center;
+}
+.net-stat-card .val { font-size: 1.2rem; font-weight: 700; }
+.net-stat-card .lbl { font-size: 0.6rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.1rem; }
+
 /* ─── Responsive ────────────────────── */
 @media (max-width: 768px) {
   .sidebar { display: none; }
@@ -944,6 +1090,24 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
         </div>
         <div class="nav-sub-item" data-page="health" onclick="navigate('health')">
           <span class="icon">📈</span> Health
+        </div>
+        <div class="nav-sub-item" data-page="files" onclick="navigate('files')">
+          <span class="icon">📁</span> Files
+        </div>
+        <div class="nav-sub-item" data-page="services" onclick="navigate('services')">
+          <span class="icon">⚙️</span> Services
+        </div>
+        <div class="nav-sub-item" data-page="docker" onclick="navigate('docker')">
+          <span class="icon">🐳</span> Docker
+        </div>
+        <div class="nav-sub-item" data-page="logs" onclick="navigate('logs')">
+          <span class="icon">📋</span> Logs
+        </div>
+        <div class="nav-sub-item" data-page="network" onclick="navigate('network')">
+          <span class="icon">🌐</span> Network
+        </div>
+        <div class="nav-sub-item" data-page="packages" onclick="navigate('packages')">
+          <span class="icon">📦</span> Packages
         </div>
       </div>
 
@@ -1052,6 +1216,109 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
         </div>
       </div>
 
+      <!-- Files Page -->
+      <div class="page" id="page-files">
+        <div class="files-container">
+          <div class="files-toolbar">
+            <h3>📁 <span style="color:var(--accent-light)">Files</span></h3>
+            <div class="files-toolbar-actions">
+              <button class="btn-skills" onclick="loadFilesList()">↻ Refresh</button>
+            </div>
+          </div>
+          <div class="files-body">
+            <div class="files-list" id="files-list">
+              <div class="mgmt-loading" style="padding:2rem">Loading files</div>
+            </div>
+            <div class="files-editor" id="files-editor">
+              <div class="files-empty">Select a file to view/edit</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Services Page -->
+      <div class="page" id="page-services">
+        <div class="mgmt-container">
+          <div class="mgmt-toolbar">
+            <h3>⚙️ <span style="color:var(--accent-light)">Services</span></h3>
+            <div style="display:flex;gap:0.5rem">
+              <button class="btn-skills" onclick="loadServices()">↻ Refresh</button>
+            </div>
+          </div>
+          <div class="mgmt-body" id="services-content">
+            <div class="mgmt-loading">Loading services</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Docker Page -->
+      <div class="page" id="page-docker">
+        <div class="mgmt-container">
+          <div class="mgmt-toolbar">
+            <h3>🐳 <span style="color:var(--accent-light)">Docker</span></h3>
+            <div style="display:flex;gap:0.5rem">
+              <button class="btn-skills" onclick="loadDocker()">↻ Refresh</button>
+            </div>
+          </div>
+          <div class="mgmt-body" id="docker-content">
+            <div class="mgmt-loading">Loading containers</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logs Page -->
+      <div class="page" id="page-logs">
+        <div class="mgmt-container">
+          <div class="log-filter-bar">
+            <span style="font-size:0.75rem;color:var(--text-muted);font-weight:600">📋 Logs</span>
+            <select id="log-service-select" onchange="loadLogs()">
+              <option value="">Select a service…</option>
+            </select>
+            <button class="log-filter-btn" id="log-errors-btn" onclick="toggleLogFilter('errors')">Errors only</button>
+            <button class="log-filter-btn" onclick="loadLogs('1h')">Last hour</button>
+            <button class="log-filter-btn" onclick="loadLogs('24h')">Last 24h</button>
+            <button class="log-filter-btn" onclick="loadLogs()">↻ Refresh</button>
+            <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.7rem;color:var(--text-dim);margin-left:auto;cursor:pointer">
+              <input type="checkbox" id="log-follow-toggle" style="width:auto" onchange="toggleLogFollow(this.checked)"> Follow
+            </label>
+          </div>
+          <div class="log-viewer" id="log-viewer">
+            <div style="color:var(--text-muted);padding:2rem;text-align:center">Select a service to view logs</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Network Page -->
+      <div class="page" id="page-network">
+        <div class="mgmt-container">
+          <div class="mgmt-toolbar">
+            <h3>🌐 <span style="color:var(--accent-light)">Network</span></h3>
+            <div style="display:flex;gap:0.5rem">
+              <button class="btn-skills" onclick="loadNetwork()">↻ Refresh</button>
+            </div>
+          </div>
+          <div class="mgmt-body" id="network-content">
+            <div class="mgmt-loading">Loading network info</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Packages Page -->
+      <div class="page" id="page-packages">
+        <div class="mgmt-container">
+          <div class="mgmt-toolbar">
+            <h3>📦 <span style="color:var(--accent-light)">Packages</span></h3>
+            <div style="display:flex;gap:0.5rem">
+              <button class="btn-skills" onclick="loadPackages()">🔍 Check Updates</button>
+              <button class="btn-skills primary" onclick="updateAllPackages()">⬆️ Update All</button>
+            </div>
+          </div>
+          <div class="mgmt-body" id="packages-content">
+            <div class="mgmt-loading">Loading package info</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Users Page -->
       <div class="page" id="page-users">
         <div class="page-scroll" id="users-content"></div>
@@ -1110,6 +1377,8 @@ let termStreaming = '';
 let codeBlockCounter = 0;
 let fleetPollInterval = null;
 let aiName = 'CortexOS';
+let wsOneTimeHandlers = [];
+let cmdCallbacks = {};
 
 const API = '/api/v1';
 const $ = id => document.getElementById(id);
@@ -1255,7 +1524,7 @@ async function showApp() {
 // ═══════════════════════════════════════════════════════════
 function navigate(page) {
   // Server pages require a selected server
-  if (['chat', 'skills', 'terminal', 'health'].includes(page) && !selectedServer) {
+  if (['chat', 'skills', 'terminal', 'health', 'files', 'services', 'docker', 'logs', 'network', 'packages'].includes(page) && !selectedServer) {
     toast('Select a server first', 'error');
     page = 'fleet';
   }
@@ -1275,7 +1544,9 @@ function navigate(page) {
   // Render page content
   const renderers = {
     fleet: renderFleet, add: renderAdd, chat: renderChat, skills: renderSkills,
-    terminal: renderTerminal, health: renderHealth, users: renderUsers,
+    terminal: renderTerminal, health: renderHealth, files: renderFiles,
+    services: renderServices, docker: renderDocker, logs: renderLogs,
+    network: renderNetwork, packages: renderPackages, users: renderUsers,
     settings: renderSettings, audit: renderAudit, schedules: renderSchedules,
     'incidents-page': renderIncidentsPage, analytics: renderAnalytics
   };
@@ -1431,6 +1702,16 @@ function setWsStatus(state, text) {
 // WEBSOCKET MESSAGE HANDLER
 // ═══════════════════════════════════════════════════════════
 function handleWsMessage(d) {
+  // One-time RPC response handlers (for Files tab etc.)
+  if (d.type === 'res' && wsOneTimeHandlers.length > 0) {
+    for (let i = wsOneTimeHandlers.length - 1; i >= 0; i--) {
+      if (wsOneTimeHandlers[i](d)) {
+        wsOneTimeHandlers.splice(i, 1);
+        return;
+      }
+    }
+  }
+
   // Connect response
   if (d.type === 'res' && d.id === 'connect') {
     if (!d.ok) {
@@ -1467,6 +1748,27 @@ function handleWsMessage(d) {
     const p = d.payload || d.params || {};
     const st = p.state;
     const m = p.message;
+
+    // Cmd-callback interception (for services, docker, logs, network, packages tabs)
+    const activeCb = getActiveCmdCallback();
+    if (activeCb && cmdCallbacks[activeCb]) {
+      if (st === 'streaming' && m?.content) {
+        const t = extractTxt(m.content);
+        if (t) appendCmdBuffer(t);
+      } else if (['finished', 'final', 'complete', 'done'].includes(st)) {
+        const t = extractTxt(m?.content) || cmdCallbacks[activeCb]?.buffer || '';
+        completeCmdCallback(t);
+        return;
+      } else if (st === 'error') {
+        completeCmdCallback('Error: ' + (extractTxt(m?.content) || p.error || 'Failed'));
+        return;
+      } else if (!st && m?.content) {
+        const t = extractTxt(m.content);
+        if (t) appendCmdBuffer(t);
+      }
+      // Don't return for streaming — let it also update chat if user is watching
+      if (st === 'streaming' || (!st && m?.content)) return;
+    }
 
     // Terminal interception
     if (termWaitingResponse) {
@@ -3588,6 +3890,774 @@ async function renderAnalytics() {
   } catch (e) {
     el.innerHTML = `<div class="section-header"><h2>📊 <span>Fleet</span> Analytics</h2></div><p class="error-msg">${esc(e.message)}</p>`;
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// FILES TAB (RPC-based)
+// ═══════════════════════════════════════════════════════════
+let filesData = [];
+let currentFileName = null;
+let fileOriginalContent = '';
+
+function renderFiles() {
+  if (!selectedServer) return;
+  loadFilesList();
+}
+
+function loadFilesList() {
+  if (!serverWs || serverWs.readyState !== 1) {
+    $('files-list').innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>Not connected to server</div>';
+    return;
+  }
+  $('files-list').innerHTML = '<div class="mgmt-loading" style="padding:2rem">Loading files</div>';
+
+  const id = 'files-list-' + (++wsMsgN);
+  const handler = function(d) {
+    if (d.type !== 'res' || d.id !== id) return false;
+    if (d.ok && d.payload) {
+      filesData = d.payload.files || d.payload || [];
+      renderFileList(filesData);
+    } else {
+      $('files-list').innerHTML = '<div class="mgmt-notice"><span class="icon">❌</span>Failed to load files</div>';
+    }
+    return true;
+  };
+  addOneTimeWsHandler(handler);
+
+  serverWs.send(JSON.stringify({
+    type: 'req', method: 'agents.files.list', id: id,
+    params: { agentId: 'main' }
+  }));
+}
+
+const KEY_FILES = ['SOUL.md', 'IDENTITY.md', 'MEMORY.md', 'TOOLS.md', 'AGENTS.md', 'HEARTBEAT.md'];
+
+function fileIcon(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const icons = { md: '📄', json: '⚙️', yaml: '⚙️', yml: '⚙️', js: '📜', ts: '📜', py: '🐍', sh: '🔧', log: '📋', txt: '📝', toml: '⚙️', env: '🔒' };
+  return icons[ext] || '📄';
+}
+
+function renderFileList(files) {
+  const keyFiles = files.filter(f => KEY_FILES.includes(f.name || f));
+  const otherFiles = files.filter(f => !KEY_FILES.includes(f.name || f));
+
+  let html = '';
+  if (keyFiles.length > 0) {
+    html += '<div class="file-group-title">Key Files</div>';
+    keyFiles.forEach(f => {
+      const name = f.name || f;
+      html += `<div class="file-item key-file ${currentFileName === name ? 'active' : ''}" onclick="openFile('${esc(name)}')">
+        <span class="file-icon">${fileIcon(name)}</span>
+        <span class="file-name">${esc(name)}</span>
+      </div>`;
+    });
+  }
+  if (otherFiles.length > 0) {
+    html += '<div class="file-group-title">All Files</div>';
+    otherFiles.forEach(f => {
+      const name = f.name || f;
+      html += `<div class="file-item ${currentFileName === name ? 'active' : ''}" onclick="openFile('${esc(name)}')">
+        <span class="file-icon">${fileIcon(name)}</span>
+        <span class="file-name">${esc(name)}</span>
+      </div>`;
+    });
+  }
+  if (files.length === 0) {
+    html = '<div style="padding:1.5rem;color:var(--text-muted);font-size:0.8rem;text-align:center">No files found</div>';
+  }
+  $('files-list').innerHTML = html;
+}
+
+function openFile(name) {
+  if (!serverWs || serverWs.readyState !== 1) return;
+  currentFileName = name;
+  // Update active state in list
+  document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+  const items = document.querySelectorAll('.file-item');
+  items.forEach(el => { if (el.querySelector('.file-name')?.textContent === name) el.classList.add('active'); });
+
+  $('files-editor').innerHTML = '<div class="files-empty">Loading ' + esc(name) + '…</div>';
+
+  const id = 'files-get-' + (++wsMsgN);
+  const handler = function(d) {
+    if (d.type !== 'res' || d.id !== id) return false;
+    if (d.ok && d.payload != null) {
+      const content = typeof d.payload === 'string' ? d.payload : (d.payload.content || d.payload.text || JSON.stringify(d.payload, null, 2));
+      fileOriginalContent = content;
+      $('files-editor').innerHTML = `
+        <div class="files-editor-header">
+          <span class="file-path">${fileIcon(name)} ${esc(name)}</span>
+          <div class="editor-actions">
+            <button class="btn-skills" onclick="saveCurrentFile()">💾 Save</button>
+          </div>
+        </div>
+        <textarea id="file-editor-textarea" spellcheck="false">${esc(content)}</textarea>`;
+    } else {
+      $('files-editor').innerHTML = '<div class="files-empty">❌ Failed to load file</div>';
+    }
+    return true;
+  };
+  addOneTimeWsHandler(handler);
+
+  serverWs.send(JSON.stringify({
+    type: 'req', method: 'agents.files.get', id: id,
+    params: { agentId: 'main', name: name }
+  }));
+}
+
+function saveCurrentFile() {
+  if (!currentFileName || !serverWs || serverWs.readyState !== 1) return;
+  const textarea = $('file-editor-textarea');
+  if (!textarea) return;
+  const content = textarea.value;
+
+  const id = 'files-set-' + (++wsMsgN);
+  const handler = function(d) {
+    if (d.type !== 'res' || d.id !== id) return false;
+    if (d.ok) {
+      toast('File saved: ' + currentFileName);
+      fileOriginalContent = content;
+    } else {
+      toast('Failed to save file', 'error');
+    }
+    return true;
+  };
+  addOneTimeWsHandler(handler);
+
+  serverWs.send(JSON.stringify({
+    type: 'req', method: 'agents.files.set', id: id,
+    params: { agentId: 'main', name: currentFileName, content: content }
+  }));
+}
+
+function addOneTimeWsHandler(fn) { wsOneTimeHandlers.push(fn); }
+
+// ═══════════════════════════════════════════════════════════
+// CHAT-COMMAND HELPER (for Services, Docker, Logs, Network, Packages)
+// ═══════════════════════════════════════════════════════════
+function sendCmdViaChat(command, callback) {
+  if (!serverWs || serverWs.readyState !== 1) {
+    callback(null, 'Not connected to server');
+    return;
+  }
+  const cbId = 'cmd-' + (++wsMsgN);
+  cmdCallbacks[cbId] = { callback, buffer: '', done: false };
+
+  serverWs.send(JSON.stringify({
+    type: 'req', method: 'chat.send', id: 'chat-' + wsMsgN,
+    params: {
+      sessionKey: wsSessionKey || 'agent:main:webchat',
+      message: command,
+      idempotencyKey: crypto.randomUUID()
+    }
+  }));
+
+  // Use a timeout-based approach to collect the response
+  // The response comes through the normal stream events
+  // We'll stash the cbId so the event handler knows
+  cmdCallbacks[cbId].active = true;
+  // Set timeout to avoid hanging forever
+  cmdCallbacks[cbId].timeout = setTimeout(() => {
+    if (cmdCallbacks[cbId] && !cmdCallbacks[cbId].done) {
+      cmdCallbacks[cbId].done = true;
+      const buf = cmdCallbacks[cbId].buffer;
+      delete cmdCallbacks[cbId];
+      callback(buf || null, buf ? null : 'Timeout waiting for response');
+    }
+  }, 30000);
+}
+
+// Collect the latest active cmd callback
+function getActiveCmdCallback() {
+  for (const id of Object.keys(cmdCallbacks)) {
+    if (cmdCallbacks[id].active && !cmdCallbacks[id].done) return id;
+  }
+  return null;
+}
+
+function completeCmdCallback(text) {
+  const cbId = getActiveCmdCallback();
+  if (cbId && cmdCallbacks[cbId]) {
+    cmdCallbacks[cbId].done = true;
+    cmdCallbacks[cbId].buffer = text;
+    if (cmdCallbacks[cbId].timeout) clearTimeout(cmdCallbacks[cbId].timeout);
+    const cb = cmdCallbacks[cbId].callback;
+    delete cmdCallbacks[cbId];
+    cb(text, null);
+  }
+}
+
+function appendCmdBuffer(text) {
+  const cbId = getActiveCmdCallback();
+  if (cbId && cmdCallbacks[cbId]) {
+    cmdCallbacks[cbId].buffer = text;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SERVICES TAB
+// ═══════════════════════════════════════════════════════════
+let servicesCache = [];
+
+function renderServices() {
+  if (!selectedServer) return;
+  loadServices();
+}
+
+function loadServices() {
+  const el = $('services-content');
+  el.innerHTML = '<div class="mgmt-loading">Loading services</div>';
+
+  sendCmdViaChat(
+    'Run: systemctl list-units --type=service --state=running,failed --no-pager --no-legend | head -30 && echo "---CORTEX_CMD_END---"',
+    function(output, err) {
+      if (err || !output) {
+        el.innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>' + esc(err || 'No response') + '</div>';
+        return;
+      }
+      const services = parseServices(output);
+      servicesCache = services;
+      renderServicesTable(services);
+      // Also populate the logs service dropdown
+      populateLogServiceDropdown(services);
+    }
+  );
+}
+
+function parseServices(output) {
+  const services = [];
+  const lines = output.split('\n');
+  for (const line of lines) {
+    if (line.includes('---CORTEX_CMD_END---') || !line.trim()) continue;
+    // Format: name.service loaded active/inactive running/failed description...
+    // Or just parse what we can
+    const clean = line.replace(/```\w*\n?/g, '').replace(/```/g, '').replace(/^\$\s*/, '').trim();
+    if (!clean || clean.startsWith('#') || clean.startsWith('Run:')) continue;
+
+    // Try standard systemctl format
+    const match = clean.match(/^(\S+\.service)\s+(\S+)\s+(\S+)\s+(\S+)\s*(.*)/);
+    if (match) {
+      services.push({
+        name: match[1].replace('.service', ''),
+        load: match[2],
+        active: match[3],
+        sub: match[4],
+        description: match[5] || ''
+      });
+    } else {
+      // Try simpler format — just service name and state
+      const parts = clean.split(/\s+/);
+      if (parts.length >= 2 && parts[0].includes('.service')) {
+        services.push({
+          name: parts[0].replace('.service', ''),
+          load: parts[1] || 'loaded',
+          active: parts[2] || 'active',
+          sub: parts[3] || 'running',
+          description: parts.slice(4).join(' ')
+        });
+      }
+    }
+  }
+  return services;
+}
+
+function renderServicesTable(services) {
+  const el = $('services-content');
+  if (services.length === 0) {
+    el.innerHTML = '<div class="mgmt-notice"><span class="icon">ℹ️</span>No services found or unable to parse output. The AI agent will process the command.</div>';
+    return;
+  }
+
+  let html = `<div class="table-wrap"><table class="data-table">
+    <thead><tr><th>Service</th><th>Status</th><th>Description</th><th>Actions</th></tr></thead><tbody>`;
+  for (const svc of services) {
+    const statusClass = svc.sub === 'running' ? 'running' : svc.sub === 'failed' ? 'failed' : svc.active === 'inactive' ? 'inactive' : 'inactive';
+    html += `<tr>
+      <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${esc(svc.name)}</strong></td>
+      <td><span class="svc-status ${statusClass}"><span class="dot"></span>${esc(svc.sub)}</span></td>
+      <td style="color:var(--text-dim);font-size:0.75rem;max-width:250px;overflow:hidden;text-overflow:ellipsis">${esc(svc.description)}</td>
+      <td style="white-space:nowrap">
+        <button class="action-btn" onclick="svcAction('${esc(svc.name)}','restart')">↻ Restart</button>
+        <button class="action-btn" onclick="svcAction('${esc(svc.name)}','stop')">⏹ Stop</button>
+        <button class="action-btn" onclick="svcAction('${esc(svc.name)}','start')">▶ Start</button>
+        <button class="action-btn" onclick="svcLogs('${esc(svc.name)}')">📋 Logs</button>
+      </td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+function svcAction(name, action) {
+  const cmd = `Run: sudo systemctl ${action} ${name}.service && systemctl status ${name}.service --no-pager -l | head -10 && echo "---CORTEX_CMD_END---"`;
+  toast(`Sending ${action} for ${name}…`);
+  sendCmdViaChat(cmd, function(output) {
+    toast(`${action} command sent for ${name}`);
+    // Refresh after a brief delay
+    setTimeout(loadServices, 2000);
+  });
+}
+
+function svcLogs(name) {
+  // Switch to logs tab with this service pre-selected
+  navigate('logs');
+  setTimeout(() => {
+    const select = $('log-service-select');
+    if (select) {
+      // Add the option if not present
+      let found = false;
+      for (const opt of select.options) {
+        if (opt.value === name) { found = true; break; }
+      }
+      if (!found) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        select.appendChild(opt);
+      }
+      select.value = name;
+      loadLogs();
+    }
+  }, 100);
+}
+
+// ═══════════════════════════════════════════════════════════
+// DOCKER TAB
+// ═══════════════════════════════════════════════════════════
+function renderDocker() {
+  if (!selectedServer) return;
+  loadDocker();
+}
+
+function loadDocker() {
+  const el = $('docker-content');
+  el.innerHTML = '<div class="mgmt-loading">Loading containers</div>';
+
+  sendCmdViaChat(
+    "Run: docker ps -a --format '{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}' 2>/dev/null && echo '---CORTEX_CMD_END---' || echo 'Docker not installed ---CORTEX_CMD_END---'",
+    function(output, err) {
+      if (err || !output) {
+        el.innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>' + esc(err || 'No response') + '</div>';
+        return;
+      }
+      if (output.toLowerCase().includes('docker not installed') || output.toLowerCase().includes('not found') || output.toLowerCase().includes('permission denied')) {
+        el.innerHTML = '<div class="mgmt-notice"><span class="icon">🐳</span>Docker is not installed or not accessible on this server.</div>';
+        return;
+      }
+      const containers = parseDocker(output);
+      renderDockerTable(containers);
+    }
+  );
+}
+
+function parseDocker(output) {
+  const containers = [];
+  const lines = output.split('\n');
+  for (const line of lines) {
+    if (line.includes('---CORTEX_CMD_END---') || !line.trim()) continue;
+    const clean = line.replace(/```\w*\n?/g, '').replace(/```/g, '').replace(/^\$\s*/, '').trim();
+    if (!clean || clean.startsWith('#') || clean.startsWith('Run:') || clean.startsWith('CONTAINER')) continue;
+
+    const parts = clean.split('|');
+    if (parts.length >= 4) {
+      containers.push({
+        id: parts[0].trim(),
+        name: parts[1].trim(),
+        image: parts[2].trim(),
+        status: parts[3].trim(),
+        ports: (parts[4] || '').trim()
+      });
+    }
+  }
+  return containers;
+}
+
+function dockerStatusClass(status) {
+  const s = status.toLowerCase();
+  if (s.startsWith('up')) return 'running';
+  if (s.includes('exited') || s.includes('dead')) return 'exited';
+  if (s.includes('restarting')) return 'restarting';
+  return 'inactive';
+}
+
+function renderDockerTable(containers) {
+  const el = $('docker-content');
+  if (containers.length === 0) {
+    el.innerHTML = '<div class="mgmt-notice"><span class="icon">🐳</span>No Docker containers found. Output may need manual review in the Chat tab.</div>';
+    return;
+  }
+
+  let html = `<div class="table-wrap"><table class="data-table">
+    <thead><tr><th>Container</th><th>Image</th><th>Status</th><th>Ports</th><th>Actions</th></tr></thead><tbody>`;
+  for (const c of containers) {
+    const statusClass = dockerStatusClass(c.status);
+    html += `<tr>
+      <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${esc(c.name)}</strong></td>
+      <td style="font-size:0.75rem;color:var(--text-dim)">${esc(c.image)}</td>
+      <td><span class="svc-status ${statusClass}"><span class="dot"></span>${esc(c.status)}</span></td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--text-dim)">${esc(c.ports || '—')}</td>
+      <td style="white-space:nowrap">
+        <button class="action-btn" onclick="dockerAction('${esc(c.name)}','start')">▶ Start</button>
+        <button class="action-btn" onclick="dockerAction('${esc(c.name)}','stop')">⏹ Stop</button>
+        <button class="action-btn" onclick="dockerAction('${esc(c.name)}','restart')">↻ Restart</button>
+        <button class="action-btn" onclick="dockerLogs('${esc(c.name)}')">📋 Logs</button>
+        <button class="action-btn danger" onclick="dockerAction('${esc(c.name)}','rm -f')">🗑️ Remove</button>
+      </td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+function dockerAction(name, action) {
+  const cmd = `Run: docker ${action} ${name} && echo "---CORTEX_CMD_END---"`;
+  toast(`Sending docker ${action} for ${name}…`);
+  sendCmdViaChat(cmd, function(output) {
+    toast(`Docker ${action} command sent for ${name}`);
+    setTimeout(loadDocker, 2000);
+  });
+}
+
+function dockerLogs(name) {
+  const cmd = `Run: docker logs --tail 50 ${name} 2>&1 && echo "---CORTEX_CMD_END---"`;
+  navigate('logs');
+  setTimeout(() => {
+    const viewer = $('log-viewer');
+    viewer.innerHTML = '<div style="color:var(--text-muted);padding:1rem">Loading docker logs for ' + esc(name) + '…</div>';
+    sendCmdViaChat(cmd, function(output) {
+      renderLogOutput(output || 'No output', viewer);
+    });
+  }, 100);
+}
+
+// ═══════════════════════════════════════════════════════════
+// LOGS TAB
+// ═══════════════════════════════════════════════════════════
+let logFollowInterval = null;
+let logErrorsOnly = false;
+
+function renderLogs() {
+  if (!selectedServer) return;
+  // Populate service dropdown from cache
+  populateLogServiceDropdown(servicesCache);
+}
+
+function populateLogServiceDropdown(services) {
+  const select = $('log-service-select');
+  if (!select) return;
+  const currentVal = select.value;
+  // Preserve existing
+  const existing = new Set();
+  for (const opt of select.options) { if (opt.value) existing.add(opt.value); }
+
+  for (const svc of services) {
+    if (!existing.has(svc.name)) {
+      const opt = document.createElement('option');
+      opt.value = svc.name;
+      opt.textContent = svc.name;
+      select.appendChild(opt);
+    }
+  }
+  if (currentVal) select.value = currentVal;
+}
+
+function loadLogs(timeFilter) {
+  const service = $('log-service-select')?.value;
+  if (!service) {
+    $('log-viewer').innerHTML = '<div style="color:var(--text-muted);padding:2rem;text-align:center">Select a service to view logs</div>';
+    return;
+  }
+
+  const viewer = $('log-viewer');
+  viewer.innerHTML = '<div style="color:var(--text-muted);padding:1rem">Loading logs…</div>';
+
+  let timeArg = '';
+  if (timeFilter === '1h') timeArg = ' --since "1 hour ago"';
+  else if (timeFilter === '24h') timeArg = ' --since "24 hours ago"';
+
+  let grepArg = '';
+  if (logErrorsOnly) grepArg = ' | grep -iE "error|fail|fatal|critical|panic" || echo "(no errors found)"';
+
+  const cmd = `Run: journalctl -u ${service}${timeArg} --no-pager -n 50${grepArg} && echo "---CORTEX_CMD_END---"`;
+
+  sendCmdViaChat(cmd, function(output, err) {
+    renderLogOutput(output || err || 'No output', viewer);
+  });
+}
+
+function renderLogOutput(text, viewer) {
+  if (!viewer) viewer = $('log-viewer');
+  const lines = text.split('\n');
+  let html = '';
+  for (const line of lines) {
+    if (line.includes('---CORTEX_CMD_END---')) continue;
+    const clean = line.replace(/```\w*\n?/g, '').replace(/```/g, '').replace(/^\$\s*/, '');
+    if (!clean.trim() && !html) continue;
+    let cls = '';
+    if (/error|fail|fatal|critical|panic/i.test(clean)) cls = ' error';
+    else if (/warn/i.test(clean)) cls = ' warn';
+    html += `<div class="log-line${cls}">${esc(clean)}</div>`;
+  }
+  viewer.innerHTML = html || '<div style="color:var(--text-muted);padding:1rem">No log output</div>';
+  viewer.scrollTop = viewer.scrollHeight;
+}
+
+function toggleLogFilter(type) {
+  if (type === 'errors') {
+    logErrorsOnly = !logErrorsOnly;
+    const btn = $('log-errors-btn');
+    if (btn) btn.classList.toggle('active', logErrorsOnly);
+    loadLogs();
+  }
+}
+
+function toggleLogFollow(enabled) {
+  if (logFollowInterval) { clearInterval(logFollowInterval); logFollowInterval = null; }
+  if (enabled) {
+    logFollowInterval = setInterval(() => {
+      if (currentPage === 'logs') loadLogs();
+    }, 10000);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// NETWORK TAB
+// ═══════════════════════════════════════════════════════════
+function renderNetwork() {
+  if (!selectedServer) return;
+  loadNetwork();
+}
+
+function loadNetwork() {
+  const el = $('network-content');
+  el.innerHTML = '<div class="mgmt-loading">Loading network info</div>';
+
+  const cmd = `Run: echo "===INTERFACES===" && ip -br addr 2>/dev/null || ifconfig -a 2>/dev/null && echo "===PORTS===" && ss -tlnp 2>/dev/null | head -20 || netstat -tlnp 2>/dev/null | head -20 && echo "===CONNECTIONS===" && ss -s 2>/dev/null | head -5 && echo "===FIREWALL===" && sudo ufw status 2>/dev/null || echo "UFW not available" && echo "---CORTEX_CMD_END---"`;
+
+  sendCmdViaChat(cmd, function(output, err) {
+    if (err || !output) {
+      el.innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>' + esc(err || 'No response') + '</div>';
+      return;
+    }
+    renderNetworkOutput(output);
+  });
+}
+
+function renderNetworkOutput(output) {
+  const el = $('network-content');
+  const clean = output.replace(/```\w*\n?/g, '').replace(/```/g, '');
+
+  // Try to split by sections
+  const sections = {};
+  let currentSection = 'raw';
+  for (const line of clean.split('\n')) {
+    if (line.includes('===INTERFACES===')) { currentSection = 'interfaces'; continue; }
+    if (line.includes('===PORTS===')) { currentSection = 'ports'; continue; }
+    if (line.includes('===CONNECTIONS===')) { currentSection = 'connections'; continue; }
+    if (line.includes('===FIREWALL===')) { currentSection = 'firewall'; continue; }
+    if (line.includes('---CORTEX_CMD_END---')) continue;
+    if (!sections[currentSection]) sections[currentSection] = [];
+    sections[currentSection].push(line);
+  }
+
+  // Count connections
+  let connCount = '—';
+  if (sections.connections) {
+    for (const line of sections.connections) {
+      const match = line.match(/(\d+)\s+estab/i);
+      if (match) { connCount = match[1]; break; }
+    }
+  }
+
+  // Count open ports
+  let portCount = 0;
+  if (sections.ports) {
+    portCount = sections.ports.filter(l => l.trim() && !l.includes('Local') && !l.includes('State') && !l.match(/^\s*$/)).length;
+  }
+
+  // Count interfaces
+  let ifCount = 0;
+  if (sections.interfaces) {
+    ifCount = sections.interfaces.filter(l => l.trim() && !l.includes('Run:') && !l.startsWith('#')).length;
+  }
+
+  let html = `
+    <div class="net-stat-cards">
+      <div class="net-stat-card"><div class="val blue">${ifCount}</div><div class="lbl">Interfaces</div></div>
+      <div class="net-stat-card"><div class="val accent">${portCount}</div><div class="lbl">Open Ports</div></div>
+      <div class="net-stat-card"><div class="val green">${connCount}</div><div class="lbl">Established</div></div>
+    </div>`;
+
+  // Interfaces section
+  if (sections.interfaces && sections.interfaces.length > 0) {
+    html += `<div class="net-section">
+      <h4><span class="icon">📡</span> Network Interfaces</h4>
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Interface</th><th>Status</th><th>IP Address</th></tr></thead><tbody>`;
+    for (const line of sections.interfaces) {
+      const trimmed = line.replace(/^\$\s*/, '').trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('Run:')) continue;
+      // ip -br addr format: name STATUS ip/mask
+      const parts = trimmed.split(/\s+/);
+      if (parts.length >= 2) {
+        const name = parts[0];
+        const status = parts[1];
+        const ip = parts.slice(2).join(' ') || '—';
+        const statusClass = status === 'UP' ? 'running' : 'inactive';
+        html += `<tr>
+          <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${esc(name)}</strong></td>
+          <td><span class="svc-status ${statusClass}"><span class="dot"></span>${esc(status)}</span></td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem">${esc(ip)}</td>
+        </tr>`;
+      }
+    }
+    html += '</tbody></table></div></div>';
+  }
+
+  // Open Ports section
+  if (sections.ports && sections.ports.length > 0) {
+    html += `<div class="net-section">
+      <h4><span class="icon">🔌</span> Open Ports</h4>
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Protocol</th><th>Address</th><th>Port</th><th>Process</th></tr></thead><tbody>`;
+    for (const line of sections.ports) {
+      const trimmed = line.replace(/^\$\s*/, '').trim();
+      if (!trimmed || trimmed.startsWith('State') || trimmed.startsWith('Netid') || trimmed.startsWith('#') || trimmed.startsWith('Run:')) continue;
+      // ss -tlnp format: State Recv-Q Send-Q Local Address:Port Peer Address:Port Process
+      const parts = trimmed.split(/\s+/);
+      if (parts.length >= 5) {
+        const proto = parts[0] || 'tcp';
+        const localAddr = parts[3] || parts[4] || '—';
+        const addrParts = localAddr.split(':');
+        const port = addrParts.pop() || '—';
+        const addr = addrParts.join(':') || '*';
+        const process = parts.slice(5).join(' ') || '—';
+        html += `<tr>
+          <td>${esc(proto)}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem">${esc(addr)}</td>
+          <td style="font-weight:600">${esc(port)}</td>
+          <td style="font-size:0.72rem;color:var(--text-dim)">${esc(process.replace(/users:\(\(/, '').replace(/\)\)/, ''))}</td>
+        </tr>`;
+      }
+    }
+    html += '</tbody></table></div></div>';
+  }
+
+  // Firewall section
+  if (sections.firewall && sections.firewall.length > 0) {
+    const fwText = sections.firewall.join('\n').trim();
+    if (fwText && !fwText.includes('not available')) {
+      html += `<div class="net-section">
+        <h4><span class="icon">🛡️</span> Firewall (UFW)</h4>
+        <div style="background:#0a0c14;border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem 1rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.6;color:#c8d6e5;white-space:pre-wrap">${esc(fwText)}</div>
+      </div>`;
+    }
+  }
+
+  // Connection stats
+  if (sections.connections && sections.connections.length > 0) {
+    const connText = sections.connections.join('\n').trim();
+    if (connText) {
+      html += `<div class="net-section">
+        <h4><span class="icon">📊</span> Connection Summary</h4>
+        <div style="background:#0a0c14;border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem 1rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.6;color:#c8d6e5;white-space:pre-wrap">${esc(connText)}</div>
+      </div>`;
+    }
+  }
+
+  el.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PACKAGES TAB
+// ═══════════════════════════════════════════════════════════
+function renderPackages() {
+  if (!selectedServer) return;
+  loadPackages();
+}
+
+function loadPackages() {
+  const el = $('packages-content');
+  el.innerHTML = '<div class="mgmt-loading">Loading package info</div>';
+
+  const cmd = `Run: echo "===UPGRADABLE===" && apt list --upgradable 2>/dev/null | tail -20 && echo "===COUNT===" && dpkg --list 2>/dev/null | wc -l && echo "---CORTEX_CMD_END---"`;
+
+  sendCmdViaChat(cmd, function(output, err) {
+    if (err || !output) {
+      el.innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>' + esc(err || 'No response') + '</div>';
+      return;
+    }
+    renderPackagesOutput(output);
+  });
+}
+
+function renderPackagesOutput(output) {
+  const el = $('packages-content');
+  const clean = output.replace(/```\w*\n?/g, '').replace(/```/g, '');
+
+  let upgradable = [];
+  let totalCount = '—';
+  let section = 'raw';
+
+  for (const line of clean.split('\n')) {
+    if (line.includes('===UPGRADABLE===')) { section = 'upgradable'; continue; }
+    if (line.includes('===COUNT===')) { section = 'count'; continue; }
+    if (line.includes('---CORTEX_CMD_END---')) continue;
+    const trimmed = line.replace(/^\$\s*/, '').trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('Run:') || trimmed.startsWith('Listing')) continue;
+
+    if (section === 'upgradable' && trimmed.includes('/')) {
+      // apt list --upgradable format: package/source version [upgradable from: version]
+      const match = trimmed.match(/^(\S+?)\/\S+\s+(\S+)/);
+      if (match) {
+        const fromMatch = trimmed.match(/\[upgradable from: (\S+)\]/);
+        upgradable.push({
+          name: match[1],
+          newVersion: match[2],
+          oldVersion: fromMatch ? fromMatch[1] : '—'
+        });
+      }
+    } else if (section === 'count') {
+      const num = trimmed.match(/(\d+)/);
+      if (num) totalCount = num[1];
+    }
+  }
+
+  let html = `
+    <div class="net-stat-cards">
+      <div class="net-stat-card"><div class="val blue">${totalCount}</div><div class="lbl">Total Installed</div></div>
+      <div class="net-stat-card"><div class="val ${upgradable.length > 0 ? 'yellow' : 'green'}">${upgradable.length}</div><div class="lbl">Available Updates</div></div>
+    </div>`;
+
+  if (upgradable.length > 0) {
+    html += `<div class="table-wrap"><table class="data-table">
+      <thead><tr><th>Package</th><th>Current Version</th><th>New Version</th></tr></thead><tbody>`;
+    for (const pkg of upgradable) {
+      html += `<tr>
+        <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${esc(pkg.name)}</strong></td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-muted)">${esc(pkg.oldVersion)}</td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--green)">${esc(pkg.newVersion)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  } else {
+    html += '<div class="mgmt-notice"><span class="icon">✅</span>All packages are up to date!</div>';
+  }
+
+  el.innerHTML = html;
+}
+
+function updateAllPackages() {
+  if (!confirm('Run apt update && apt upgrade -y on this server?')) return;
+  toast('Sending update command…');
+  sendCmdViaChat(
+    'Run: sudo apt update && sudo apt upgrade -y 2>&1 | tail -20 && echo "---CORTEX_CMD_END---"',
+    function(output) {
+      toast('Update command completed');
+      setTimeout(loadPackages, 3000);
+    }
+  );
 }
 
 // ═══════════════════════════════════════════════════════════
