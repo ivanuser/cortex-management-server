@@ -1,0 +1,32 @@
+# Cortex Management Server — Docker Compose
+#
+# Usage:
+#   docker compose up -d
+#
+# Access: http://localhost:9443
+
+services:
+  management-server:
+    build: .
+    image: cortex-management-server:latest
+    container_name: cortex-management
+    restart: unless-stopped
+    ports:
+      - "9443:9443"
+    environment:
+      - NODE_ENV=production
+      - PORT=9443
+      - JWT_SECRET=${JWT_SECRET:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+    volumes:
+      - mgmt-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9443/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mgmt-data:
+    name: cortex-mgmt-data
