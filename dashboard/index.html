@@ -4096,83 +4096,86 @@ function appendCmdBuffer(text) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// SERVICES TAB
+// SERVICES TAB (fetches from services.json endpoint)
 // ═══════════════════════════════════════════════════════════
 let servicesCache = [];
+let svcShowAll = false;
 
 function renderServices() {
   if (!selectedServer) return;
   loadServices();
 }
 
-function loadServices() {
+async function loadServices() {
   const el = $('services-content');
   el.innerHTML = '<div class="mgmt-loading">Loading services</div>';
+  try {
+    const data = await api('/servers/' + selectedServer.id + '/proxy/services.json');
+    if (data.error && !data.services) throw new Error(data.error);
+    servicesCache = (data.services || []).map(s => ({
+      name: s.name,
+      load: 'loaded',
+      active: s.active || (s.status === 'running' ? 'active' : s.status === 'failed' ? 'failed' : 'inactive'),
+      sub: s.sub || s.status,
+      description: s.description || ''
+    }));
+    renderServicesTable(servicesCache, data);
+    populateLogServiceDropdown(servicesCache);
+  } catch (err) {
+    // Fallback: try chat-based approach
+    console.warn('services.json fetch failed, falling back to chat:', err.message);
+    loadServicesFallback(el);
+  }
+}
 
+function loadServicesFallback(el) {
   sendCmdViaChat(
     'Run: systemctl list-units --type=service --state=running,failed --no-pager --no-legend | head -30 && echo "---CORTEX_CMD_END---"',
     function(output, err) {
       if (err || !output) {
-        el.innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>' + esc(err || 'No response') + '</div>';
+        el.innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>' + esc(err || 'No response — services.json endpoint not available and AI agent unavailable') + '</div>';
         return;
       }
-      const services = parseServices(output);
+      const services = [];
+      for (const line of output.split('\n')) {
+        if (line.includes('---CORTEX_CMD_END---') || !line.trim()) continue;
+        const clean = line.replace(/```\w*\n?/g, '').replace(/```/g, '').replace(/^\$\s*/, '').trim();
+        if (!clean || clean.startsWith('#') || clean.startsWith('Run:')) continue;
+        const match = clean.match(/^(\S+\.service)\s+(\S+)\s+(\S+)\s+(\S+)\s*(.*)/);
+        if (match) {
+          services.push({ name: match[1].replace('.service', ''), load: match[2], active: match[3], sub: match[4], description: match[5] || '' });
+        }
+      }
       servicesCache = services;
       renderServicesTable(services);
-      // Also populate the logs service dropdown
       populateLogServiceDropdown(services);
     }
   );
 }
 
-function parseServices(output) {
-  const services = [];
-  const lines = output.split('\n');
-  for (const line of lines) {
-    if (line.includes('---CORTEX_CMD_END---') || !line.trim()) continue;
-    // Format: name.service loaded active/inactive running/failed description...
-    // Or just parse what we can
-    const clean = line.replace(/```\w*\n?/g, '').replace(/```/g, '').replace(/^\$\s*/, '').trim();
-    if (!clean || clean.startsWith('#') || clean.startsWith('Run:')) continue;
-
-    // Try standard systemctl format
-    const match = clean.match(/^(\S+\.service)\s+(\S+)\s+(\S+)\s+(\S+)\s*(.*)/);
-    if (match) {
-      services.push({
-        name: match[1].replace('.service', ''),
-        load: match[2],
-        active: match[3],
-        sub: match[4],
-        description: match[5] || ''
-      });
-    } else {
-      // Try simpler format — just service name and state
-      const parts = clean.split(/\s+/);
-      if (parts.length >= 2 && parts[0].includes('.service')) {
-        services.push({
-          name: parts[0].replace('.service', ''),
-          load: parts[1] || 'loaded',
-          active: parts[2] || 'active',
-          sub: parts[3] || 'running',
-          description: parts.slice(4).join(' ')
-        });
-      }
-    }
-  }
-  return services;
-}
-
-function renderServicesTable(services) {
+function renderServicesTable(services, stats) {
   const el = $('services-content');
   if (services.length === 0) {
-    el.innerHTML = '<div class="mgmt-notice"><span class="icon">ℹ️</span>No services found or unable to parse output. The AI agent will process the command.</div>';
+    el.innerHTML = '<div class="mgmt-notice"><span class="icon">ℹ️</span>No services found. The sysinfo collector may not be installed on this server.</div>';
     return;
   }
 
-  let html = `<div class="table-wrap"><table class="data-table">
+  // Filter: show only running/failed by default, or all if toggled
+  const filtered = svcShowAll ? services : services.filter(s => s.sub === 'running' || s.sub === 'failed');
+  const running = services.filter(s => s.sub === 'running').length;
+  const failed = services.filter(s => s.sub === 'failed').length;
+
+  let html = `<div class="net-stat-cards" style="margin-bottom:1rem">
+    <div class="net-stat-card"><div class="val green">${stats?.running ?? running}</div><div class="lbl">Running</div></div>
+    <div class="net-stat-card"><div class="val ${failed > 0 ? 'crit' : 'green'}">${stats?.failed ?? failed}</div><div class="lbl">Failed</div></div>
+    <div class="net-stat-card"><div class="val blue">${stats?.total ?? services.length}</div><div class="lbl">Total</div></div>
+  </div>
+  <div style="margin-bottom:0.5rem"><label style="font-size:0.72rem;color:var(--text-dim);cursor:pointer"><input type="checkbox" style="width:auto" ${svcShowAll ? 'checked' : ''} onchange="svcShowAll=this.checked;renderServicesTable(servicesCache)"> Show inactive/exited services</label></div>`;
+
+  html += `<div class="table-wrap"><table class="data-table">
     <thead><tr><th>Service</th><th>Status</th><th>Description</th><th>Actions</th></tr></thead><tbody>`;
-  for (const svc of services) {
-    const statusClass = svc.sub === 'running' ? 'running' : svc.sub === 'failed' ? 'failed' : svc.active === 'inactive' ? 'inactive' : 'inactive';
+  for (const svc of filtered) {
+    const statusClass = svc.sub === 'running' ? 'running' : svc.sub === 'failed' ? 'failed' : 'inactive';
     html += `<tr>
       <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${esc(svc.name)}</strong></td>
       <td><span class="svc-status ${statusClass}"><span class="dot"></span>${esc(svc.sub)}</span></td>
@@ -4186,6 +4189,7 @@ function renderServicesTable(services) {
     </tr>`;
   }
   html += '</tbody></table></div>';
+  if (stats?.ts) html += `<div style="text-align:right;font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">Updated ${timeAgo(new Date(stats.ts * 1000).toISOString())}</div>`;
   el.innerHTML = html;
 }
 
@@ -4194,18 +4198,15 @@ function svcAction(name, action) {
   toast(`Sending ${action} for ${name}…`);
   sendCmdViaChat(cmd, function(output) {
     toast(`${action} command sent for ${name}`);
-    // Refresh after a brief delay
     setTimeout(loadServices, 2000);
   });
 }
 
 function svcLogs(name) {
-  // Switch to logs tab with this service pre-selected
   navigate('logs');
   setTimeout(() => {
     const select = $('log-service-select');
     if (select) {
-      // Add the option if not present
       let found = false;
       for (const opt of select.options) {
         if (opt.value === name) { found = true; break; }
@@ -4223,75 +4224,83 @@ function svcLogs(name) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// DOCKER TAB
+// DOCKER TAB (fetches from docker.json endpoint)
 // ═══════════════════════════════════════════════════════════
 function renderDocker() {
   if (!selectedServer) return;
   loadDocker();
 }
 
-function loadDocker() {
+async function loadDocker() {
   const el = $('docker-content');
   el.innerHTML = '<div class="mgmt-loading">Loading containers</div>';
+  try {
+    const data = await api('/servers/' + selectedServer.id + '/proxy/docker.json');
+    if (!data.installed) {
+      el.innerHTML = '<div class="mgmt-notice"><span class="icon">🐳</span>Docker is not installed on this server.</div>';
+      return;
+    }
+    if (data.error && !data.containers) throw new Error(data.error);
+    renderDockerTable(data.containers || [], data);
+  } catch (err) {
+    console.warn('docker.json fetch failed, falling back to chat:', err.message);
+    loadDockerFallback(el);
+  }
+}
 
+function loadDockerFallback(el) {
   sendCmdViaChat(
     "Run: docker ps -a --format '{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}' 2>/dev/null && echo '---CORTEX_CMD_END---' || echo 'Docker not installed ---CORTEX_CMD_END---'",
     function(output, err) {
       if (err || !output) {
-        el.innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>' + esc(err || 'No response') + '</div>';
+        el.innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>' + esc(err || 'No response — docker.json endpoint not available and AI agent unavailable') + '</div>';
         return;
       }
-      if (output.toLowerCase().includes('docker not installed') || output.toLowerCase().includes('not found') || output.toLowerCase().includes('permission denied')) {
+      if (output.toLowerCase().includes('docker not installed') || output.toLowerCase().includes('not found')) {
         el.innerHTML = '<div class="mgmt-notice"><span class="icon">🐳</span>Docker is not installed or not accessible on this server.</div>';
         return;
       }
-      const containers = parseDocker(output);
+      const containers = [];
+      for (const line of output.split('\n')) {
+        if (line.includes('---CORTEX_CMD_END---') || !line.trim()) continue;
+        const clean = line.replace(/```\w*\n?/g, '').replace(/```/g, '').replace(/^\$\s*/, '').trim();
+        if (!clean || clean.startsWith('#') || clean.startsWith('Run:') || clean.startsWith('CONTAINER')) continue;
+        const parts = clean.split('|');
+        if (parts.length >= 4) {
+          containers.push({ id: parts[0].trim(), name: parts[1].trim(), image: parts[2].trim(), status: parts[3].trim(), ports: (parts[4] || '').trim() });
+        }
+      }
       renderDockerTable(containers);
     }
   );
 }
 
-function parseDocker(output) {
-  const containers = [];
-  const lines = output.split('\n');
-  for (const line of lines) {
-    if (line.includes('---CORTEX_CMD_END---') || !line.trim()) continue;
-    const clean = line.replace(/```\w*\n?/g, '').replace(/```/g, '').replace(/^\$\s*/, '').trim();
-    if (!clean || clean.startsWith('#') || clean.startsWith('Run:') || clean.startsWith('CONTAINER')) continue;
-
-    const parts = clean.split('|');
-    if (parts.length >= 4) {
-      containers.push({
-        id: parts[0].trim(),
-        name: parts[1].trim(),
-        image: parts[2].trim(),
-        status: parts[3].trim(),
-        ports: (parts[4] || '').trim()
-      });
-    }
-  }
-  return containers;
-}
-
 function dockerStatusClass(status) {
-  const s = status.toLowerCase();
-  if (s.startsWith('up')) return 'running';
-  if (s.includes('exited') || s.includes('dead')) return 'exited';
-  if (s.includes('restarting')) return 'restarting';
+  const s = (status || '').toLowerCase();
+  if (s.startsWith('up') || s === 'running') return 'running';
+  if (s.includes('exited') || s.includes('dead') || s === 'exited') return 'exited';
+  if (s.includes('restarting') || s === 'restarting') return 'restarting';
   return 'inactive';
 }
 
-function renderDockerTable(containers) {
+function renderDockerTable(containers, stats) {
   const el = $('docker-content');
   if (containers.length === 0) {
-    el.innerHTML = '<div class="mgmt-notice"><span class="icon">🐳</span>No Docker containers found. Output may need manual review in the Chat tab.</div>';
+    el.innerHTML = '<div class="mgmt-notice"><span class="icon">🐳</span>No Docker containers found on this server.</div>';
     return;
   }
 
-  let html = `<div class="table-wrap"><table class="data-table">
+  const runCount = containers.filter(c => dockerStatusClass(c.status_short || c.status) === 'running').length;
+
+  let html = `<div class="net-stat-cards" style="margin-bottom:1rem">
+    <div class="net-stat-card"><div class="val green">${runCount}</div><div class="lbl">Running</div></div>
+    <div class="net-stat-card"><div class="val blue">${containers.length}</div><div class="lbl">Total</div></div>
+  </div>`;
+
+  html += `<div class="table-wrap"><table class="data-table">
     <thead><tr><th>Container</th><th>Image</th><th>Status</th><th>Ports</th><th>Actions</th></tr></thead><tbody>`;
   for (const c of containers) {
-    const statusClass = dockerStatusClass(c.status);
+    const statusClass = dockerStatusClass(c.status_short || c.status);
     html += `<tr>
       <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${esc(c.name)}</strong></td>
       <td style="font-size:0.75rem;color:var(--text-dim)">${esc(c.image)}</td>
@@ -4307,6 +4316,7 @@ function renderDockerTable(containers) {
     </tr>`;
   }
   html += '</tbody></table></div>';
+  if (stats?.ts) html += `<div style="text-align:right;font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">Updated ${timeAgo(new Date(stats.ts * 1000).toISOString())}</div>`;
   el.innerHTML = html;
 }
 
@@ -4332,22 +4342,24 @@ function dockerLogs(name) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// LOGS TAB
+// LOGS TAB (chat-based with logs.json fallback)
 // ═══════════════════════════════════════════════════════════
 let logFollowInterval = null;
 let logErrorsOnly = false;
 
 function renderLogs() {
   if (!selectedServer) return;
-  // Populate service dropdown from cache
   populateLogServiceDropdown(servicesCache);
+  // Auto-load default logs from logs.json if no service selected
+  if (!$('log-service-select')?.value) {
+    loadLogsFromEndpoint();
+  }
 }
 
 function populateLogServiceDropdown(services) {
   const select = $('log-service-select');
   if (!select) return;
   const currentVal = select.value;
-  // Preserve existing
   const existing = new Set();
   for (const opt of select.options) { if (opt.value) existing.add(opt.value); }
 
@@ -4362,10 +4374,33 @@ function populateLogServiceDropdown(services) {
   if (currentVal) select.value = currentVal;
 }
 
+async function loadLogsFromEndpoint() {
+  const viewer = $('log-viewer');
+  if (!viewer || !selectedServer) return;
+  viewer.innerHTML = '<div style="color:var(--text-muted);padding:1rem">Loading logs…</div>';
+  try {
+    const data = await api('/servers/' + selectedServer.id + '/proxy/logs.json');
+    if (!data.lines || data.lines.length === 0) {
+      viewer.innerHTML = '<div style="color:var(--text-muted);padding:1rem">No log output available</div>';
+      return;
+    }
+    let html = '';
+    for (const entry of data.lines) {
+      const cls = entry.level === 'error' ? ' error' : entry.level === 'warn' ? ' warn' : '';
+      html += `<div class="log-line${cls}">${esc(entry.text)}</div>`;
+    }
+    if (data.ts) html += `<div style="text-align:right;font-size:0.6rem;color:var(--text-dim);padding:0.25rem">Snapshot from ${timeAgo(new Date(data.ts * 1000).toISOString())}</div>`;
+    viewer.innerHTML = html;
+    viewer.scrollTop = viewer.scrollHeight;
+  } catch {
+    viewer.innerHTML = '<div style="color:var(--text-muted);padding:2rem;text-align:center">Select a service to view logs, or logs.json endpoint not available</div>';
+  }
+}
+
 function loadLogs(timeFilter) {
   const service = $('log-service-select')?.value;
   if (!service) {
-    $('log-viewer').innerHTML = '<div style="color:var(--text-muted);padding:2rem;text-align:center">Select a service to view logs</div>';
+    loadLogsFromEndpoint();
     return;
   }
 
@@ -4422,222 +4457,164 @@ function toggleLogFollow(enabled) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// NETWORK TAB
+// NETWORK TAB (fetches from network.json endpoint)
 // ═══════════════════════════════════════════════════════════
 function renderNetwork() {
   if (!selectedServer) return;
   loadNetwork();
 }
 
-function loadNetwork() {
+async function loadNetwork() {
   const el = $('network-content');
   el.innerHTML = '<div class="mgmt-loading">Loading network info</div>';
-
-  const cmd = `Run: echo "===INTERFACES===" && ip -br addr 2>/dev/null || ifconfig -a 2>/dev/null && echo "===PORTS===" && ss -tlnp 2>/dev/null | head -20 || netstat -tlnp 2>/dev/null | head -20 && echo "===CONNECTIONS===" && ss -s 2>/dev/null | head -5 && echo "===FIREWALL===" && sudo ufw status 2>/dev/null || echo "UFW not available" && echo "---CORTEX_CMD_END---"`;
-
-  sendCmdViaChat(cmd, function(output, err) {
-    if (err || !output) {
-      el.innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>' + esc(err || 'No response') + '</div>';
-      return;
-    }
-    renderNetworkOutput(output);
-  });
+  try {
+    const data = await api('/servers/' + selectedServer.id + '/proxy/network.json');
+    if (data.error && !data.interfaces) throw new Error(data.error);
+    renderNetworkFromJSON(data);
+  } catch (err) {
+    console.warn('network.json fetch failed, falling back to chat:', err.message);
+    loadNetworkFallback(el);
+  }
 }
 
-function renderNetworkOutput(output) {
+function renderNetworkFromJSON(data) {
   const el = $('network-content');
-  const clean = output.replace(/```\w*\n?/g, '').replace(/```/g, '');
-
-  // Try to split by sections
-  const sections = {};
-  let currentSection = 'raw';
-  for (const line of clean.split('\n')) {
-    if (line.includes('===INTERFACES===')) { currentSection = 'interfaces'; continue; }
-    if (line.includes('===PORTS===')) { currentSection = 'ports'; continue; }
-    if (line.includes('===CONNECTIONS===')) { currentSection = 'connections'; continue; }
-    if (line.includes('===FIREWALL===')) { currentSection = 'firewall'; continue; }
-    if (line.includes('---CORTEX_CMD_END---')) continue;
-    if (!sections[currentSection]) sections[currentSection] = [];
-    sections[currentSection].push(line);
-  }
-
-  // Count connections
-  let connCount = '—';
-  if (sections.connections) {
-    for (const line of sections.connections) {
-      const match = line.match(/(\d+)\s+estab/i);
-      if (match) { connCount = match[1]; break; }
-    }
-  }
-
-  // Count open ports
-  let portCount = 0;
-  if (sections.ports) {
-    portCount = sections.ports.filter(l => l.trim() && !l.includes('Local') && !l.includes('State') && !l.match(/^\s*$/)).length;
-  }
-
-  // Count interfaces
-  let ifCount = 0;
-  if (sections.interfaces) {
-    ifCount = sections.interfaces.filter(l => l.trim() && !l.includes('Run:') && !l.startsWith('#')).length;
-  }
+  const ifaces = data.interfaces || [];
+  const ports = data.ports || [];
+  const connections = data.connections || 0;
+  const fw = data.firewall || {};
 
   let html = `
     <div class="net-stat-cards">
-      <div class="net-stat-card"><div class="val blue">${ifCount}</div><div class="lbl">Interfaces</div></div>
-      <div class="net-stat-card"><div class="val accent">${portCount}</div><div class="lbl">Open Ports</div></div>
-      <div class="net-stat-card"><div class="val green">${connCount}</div><div class="lbl">Established</div></div>
+      <div class="net-stat-card"><div class="val blue">${ifaces.length}</div><div class="lbl">Interfaces</div></div>
+      <div class="net-stat-card"><div class="val accent">${ports.length}</div><div class="lbl">Open Ports</div></div>
+      <div class="net-stat-card"><div class="val green">${connections}</div><div class="lbl">Established</div></div>
     </div>`;
 
-  // Interfaces section
-  if (sections.interfaces && sections.interfaces.length > 0) {
+  // Interfaces
+  if (ifaces.length > 0) {
     html += `<div class="net-section">
       <h4><span class="icon">📡</span> Network Interfaces</h4>
       <div class="table-wrap"><table class="data-table">
-        <thead><tr><th>Interface</th><th>Status</th><th>IP Address</th></tr></thead><tbody>`;
-    for (const line of sections.interfaces) {
-      const trimmed = line.replace(/^\$\s*/, '').trim();
-      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('Run:')) continue;
-      // ip -br addr format: name STATUS ip/mask
-      const parts = trimmed.split(/\s+/);
-      if (parts.length >= 2) {
-        const name = parts[0];
-        const status = parts[1];
-        const ip = parts.slice(2).join(' ') || '—';
-        const statusClass = status === 'UP' ? 'running' : 'inactive';
-        html += `<tr>
-          <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${esc(name)}</strong></td>
-          <td><span class="svc-status ${statusClass}"><span class="dot"></span>${esc(status)}</span></td>
-          <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem">${esc(ip)}</td>
-        </tr>`;
-      }
+        <thead><tr><th>Interface</th><th>Status</th><th>IP Address</th><th>MAC</th></tr></thead><tbody>`;
+    for (const iface of ifaces) {
+      const statusClass = iface.status === 'UP' ? 'running' : 'inactive';
+      html += `<tr>
+        <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${esc(iface.name)}</strong></td>
+        <td><span class="svc-status ${statusClass}"><span class="dot"></span>${esc(iface.status)}</span></td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem">${esc(iface.ip || '—')}</td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--text-dim)">${esc(iface.mac || '—')}</td>
+      </tr>`;
     }
     html += '</tbody></table></div></div>';
   }
 
-  // Open Ports section
-  if (sections.ports && sections.ports.length > 0) {
+  // Ports
+  if (ports.length > 0) {
     html += `<div class="net-section">
       <h4><span class="icon">🔌</span> Open Ports</h4>
       <div class="table-wrap"><table class="data-table">
-        <thead><tr><th>Protocol</th><th>Address</th><th>Port</th><th>Process</th></tr></thead><tbody>`;
-    for (const line of sections.ports) {
-      const trimmed = line.replace(/^\$\s*/, '').trim();
-      if (!trimmed || trimmed.startsWith('State') || trimmed.startsWith('Netid') || trimmed.startsWith('#') || trimmed.startsWith('Run:')) continue;
-      // ss -tlnp format: State Recv-Q Send-Q Local Address:Port Peer Address:Port Process
-      const parts = trimmed.split(/\s+/);
-      if (parts.length >= 5) {
-        const proto = parts[0] || 'tcp';
-        const localAddr = parts[3] || parts[4] || '—';
-        const addrParts = localAddr.split(':');
-        const port = addrParts.pop() || '—';
-        const addr = addrParts.join(':') || '*';
-        const process = parts.slice(5).join(' ') || '—';
-        html += `<tr>
-          <td>${esc(proto)}</td>
-          <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem">${esc(addr)}</td>
-          <td style="font-weight:600">${esc(port)}</td>
-          <td style="font-size:0.72rem;color:var(--text-dim)">${esc(process.replace(/users:\(\(/, '').replace(/\)\)/, ''))}</td>
-        </tr>`;
-      }
+        <thead><tr><th>Port</th><th>Protocol</th><th>Address</th><th>Process</th></tr></thead><tbody>`;
+    for (const p of ports) {
+      html += `<tr>
+        <td style="font-weight:600">${esc(String(p.port))}</td>
+        <td>${esc(p.proto || 'tcp')}</td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem">${esc(p.address || '*')}</td>
+        <td style="font-size:0.72rem;color:var(--text-dim)">${esc(p.process || '—')}</td>
+      </tr>`;
     }
     html += '</tbody></table></div></div>';
   }
 
-  // Firewall section
-  if (sections.firewall && sections.firewall.length > 0) {
-    const fwText = sections.firewall.join('\n').trim();
-    if (fwText && !fwText.includes('not available')) {
-      html += `<div class="net-section">
-        <h4><span class="icon">🛡️</span> Firewall (UFW)</h4>
-        <div style="background:#0a0c14;border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem 1rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.6;color:#c8d6e5;white-space:pre-wrap">${esc(fwText)}</div>
-      </div>`;
-    }
+  // Firewall
+  if (fw.enabled !== undefined) {
+    html += `<div class="net-section">
+      <h4><span class="icon">🛡️</span> Firewall</h4>
+      <div style="background:#0a0c14;border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem 1rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.6;color:#c8d6e5">
+        Status: <span style="color:${fw.enabled ? 'var(--green)' : 'var(--yellow)'}"><strong>${fw.enabled ? 'Active' : 'Inactive'}</strong></span>
+        ${fw.rules && fw.rules.length > 0 ? '<br><br>' + fw.rules.map(r => esc(r)).join('<br>') : ''}
+      </div>
+    </div>`;
   }
 
-  // Connection stats
-  if (sections.connections && sections.connections.length > 0) {
-    const connText = sections.connections.join('\n').trim();
-    if (connText) {
-      html += `<div class="net-section">
-        <h4><span class="icon">📊</span> Connection Summary</h4>
-        <div style="background:#0a0c14;border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem 1rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.6;color:#c8d6e5;white-space:pre-wrap">${esc(connText)}</div>
-      </div>`;
-    }
-  }
+  if (data.ts) html += `<div style="text-align:right;font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">Updated ${timeAgo(new Date(data.ts * 1000).toISOString())}</div>`;
+  el.innerHTML = html;
+}
 
+function loadNetworkFallback(el) {
+  const cmd = `Run: echo "===INTERFACES===" && ip -br addr 2>/dev/null || ifconfig -a 2>/dev/null && echo "===PORTS===" && ss -tlnp 2>/dev/null | head -20 || netstat -tlnp 2>/dev/null | head -20 && echo "===CONNECTIONS===" && ss -s 2>/dev/null | head -5 && echo "===FIREWALL===" && sudo ufw status 2>/dev/null || echo "UFW not available" && echo "---CORTEX_CMD_END---"`;
+  sendCmdViaChat(cmd, function(output, err) {
+    if (err || !output) {
+      el.innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>' + esc(err || 'No response — network.json endpoint not available and AI agent unavailable') + '</div>';
+      return;
+    }
+    renderNetworkFallbackOutput(output);
+  });
+}
+
+function renderNetworkFallbackOutput(output) {
+  const el = $('network-content');
+  const clean = output.replace(/```\w*\n?/g, '').replace(/```/g, '');
+  const sections = {};
+  let curSection = 'raw';
+  for (const line of clean.split('\n')) {
+    if (line.includes('===INTERFACES===')) { curSection = 'interfaces'; continue; }
+    if (line.includes('===PORTS===')) { curSection = 'ports'; continue; }
+    if (line.includes('===CONNECTIONS===')) { curSection = 'connections'; continue; }
+    if (line.includes('===FIREWALL===')) { curSection = 'firewall'; continue; }
+    if (line.includes('---CORTEX_CMD_END---')) continue;
+    if (!sections[curSection]) sections[curSection] = [];
+    sections[curSection].push(line);
+  }
+  let connCount = '—';
+  if (sections.connections) { for (const l of sections.connections) { const m = l.match(/(\d+)\s+estab/i); if (m) { connCount = m[1]; break; } } }
+  let portCount = sections.ports ? sections.ports.filter(l => l.trim() && !l.includes('Local') && !l.includes('State')).length : 0;
+  let ifCount = sections.interfaces ? sections.interfaces.filter(l => l.trim() && !l.startsWith('#')).length : 0;
+  let html = `<div class="net-stat-cards"><div class="net-stat-card"><div class="val blue">${ifCount}</div><div class="lbl">Interfaces</div></div><div class="net-stat-card"><div class="val accent">${portCount}</div><div class="lbl">Open Ports</div></div><div class="net-stat-card"><div class="val green">${connCount}</div><div class="lbl">Established</div></div></div>`;
+  html += '<div style="background:#0a0c14;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;font-family:\'JetBrains Mono\',monospace;font-size:0.75rem;line-height:1.5;color:#c8d6e5;white-space:pre-wrap;margin-top:1rem">' + esc(clean) + '</div>';
   el.innerHTML = html;
 }
 
 // ═══════════════════════════════════════════════════════════
-// PACKAGES TAB
+// PACKAGES TAB (fetches from packages.json endpoint)
 // ═══════════════════════════════════════════════════════════
 function renderPackages() {
   if (!selectedServer) return;
   loadPackages();
 }
 
-function loadPackages() {
+async function loadPackages() {
   const el = $('packages-content');
   el.innerHTML = '<div class="mgmt-loading">Loading package info</div>';
-
-  const cmd = `Run: echo "===UPGRADABLE===" && apt list --upgradable 2>/dev/null | tail -20 && echo "===COUNT===" && dpkg --list 2>/dev/null | wc -l && echo "---CORTEX_CMD_END---"`;
-
-  sendCmdViaChat(cmd, function(output, err) {
-    if (err || !output) {
-      el.innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>' + esc(err || 'No response') + '</div>';
-      return;
-    }
-    renderPackagesOutput(output);
-  });
+  try {
+    const data = await api('/servers/' + selectedServer.id + '/proxy/packages.json');
+    if (data.error && data.installed_count === undefined) throw new Error(data.error);
+    renderPackagesFromJSON(data);
+  } catch (err) {
+    console.warn('packages.json fetch failed, falling back to chat:', err.message);
+    loadPackagesFallback(el);
+  }
 }
 
-function renderPackagesOutput(output) {
+function renderPackagesFromJSON(data) {
   const el = $('packages-content');
-  const clean = output.replace(/```\w*\n?/g, '').replace(/```/g, '');
-
-  let upgradable = [];
-  let totalCount = '—';
-  let section = 'raw';
-
-  for (const line of clean.split('\n')) {
-    if (line.includes('===UPGRADABLE===')) { section = 'upgradable'; continue; }
-    if (line.includes('===COUNT===')) { section = 'count'; continue; }
-    if (line.includes('---CORTEX_CMD_END---')) continue;
-    const trimmed = line.replace(/^\$\s*/, '').trim();
-    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('Run:') || trimmed.startsWith('Listing')) continue;
-
-    if (section === 'upgradable' && trimmed.includes('/')) {
-      // apt list --upgradable format: package/source version [upgradable from: version]
-      const match = trimmed.match(/^(\S+?)\/\S+\s+(\S+)/);
-      if (match) {
-        const fromMatch = trimmed.match(/\[upgradable from: (\S+)\]/);
-        upgradable.push({
-          name: match[1],
-          newVersion: match[2],
-          oldVersion: fromMatch ? fromMatch[1] : '—'
-        });
-      }
-    } else if (section === 'count') {
-      const num = trimmed.match(/(\d+)/);
-      if (num) totalCount = num[1];
-    }
-  }
+  const updates = data.updates || [];
+  const installed = data.installed_count || 0;
 
   let html = `
     <div class="net-stat-cards">
-      <div class="net-stat-card"><div class="val blue">${totalCount}</div><div class="lbl">Total Installed</div></div>
-      <div class="net-stat-card"><div class="val ${upgradable.length > 0 ? 'yellow' : 'green'}">${upgradable.length}</div><div class="lbl">Available Updates</div></div>
+      <div class="net-stat-card"><div class="val blue">${installed}</div><div class="lbl">Total Installed</div></div>
+      <div class="net-stat-card"><div class="val ${updates.length > 0 ? 'yellow' : 'green'}">${updates.length}</div><div class="lbl">Available Updates</div></div>
     </div>`;
 
-  if (upgradable.length > 0) {
+  if (updates.length > 0) {
     html += `<div class="table-wrap"><table class="data-table">
       <thead><tr><th>Package</th><th>Current Version</th><th>New Version</th></tr></thead><tbody>`;
-    for (const pkg of upgradable) {
+    for (const pkg of updates) {
       html += `<tr>
         <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${esc(pkg.name)}</strong></td>
-        <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-muted)">${esc(pkg.oldVersion)}</td>
-        <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--green)">${esc(pkg.newVersion)}</td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-muted)">${esc(pkg.current || '—')}</td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--green)">${esc(pkg['new'] || '—')}</td>
       </tr>`;
     }
     html += '</tbody></table></div>';
@@ -4645,7 +4622,38 @@ function renderPackagesOutput(output) {
     html += '<div class="mgmt-notice"><span class="icon">✅</span>All packages are up to date!</div>';
   }
 
+  if (data.ts) html += `<div style="text-align:right;font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">Updated ${timeAgo(new Date(data.ts * 1000).toISOString())}</div>`;
   el.innerHTML = html;
+}
+
+function loadPackagesFallback(el) {
+  const cmd = `Run: echo "===UPGRADABLE===" && apt list --upgradable 2>/dev/null | tail -20 && echo "===COUNT===" && dpkg --list 2>/dev/null | grep -c "^ii" && echo "---CORTEX_CMD_END---"`;
+  sendCmdViaChat(cmd, function(output, err) {
+    if (err || !output) {
+      el.innerHTML = '<div class="mgmt-notice"><span class="icon">⚠️</span>' + esc(err || 'No response — packages.json endpoint not available and AI agent unavailable') + '</div>';
+      return;
+    }
+    const clean = output.replace(/```\w*\n?/g, '').replace(/```/g, '');
+    let upgradable = [], totalCount = '—', section = 'raw';
+    for (const line of clean.split('\n')) {
+      if (line.includes('===UPGRADABLE===')) { section = 'upgradable'; continue; }
+      if (line.includes('===COUNT===')) { section = 'count'; continue; }
+      if (line.includes('---CORTEX_CMD_END---')) continue;
+      const trimmed = line.replace(/^\$\s*/, '').trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('Run:') || trimmed.startsWith('Listing')) continue;
+      if (section === 'upgradable' && trimmed.includes('/')) {
+        const match = trimmed.match(/^(\S+?)\/\S+\s+(\S+)/);
+        if (match) {
+          const fromMatch = trimmed.match(/\[upgradable from: (\S+)\]/);
+          upgradable.push({ name: match[1], 'new': match[2], current: fromMatch ? fromMatch[1] : '—' });
+        }
+      } else if (section === 'count') {
+        const num = trimmed.match(/(\d+)/);
+        if (num) totalCount = num[1];
+      }
+    }
+    renderPackagesFromJSON({ installed_count: totalCount, updates: upgradable, update_count: upgradable.length });
+  });
 }
 
 function updateAllPackages() {
