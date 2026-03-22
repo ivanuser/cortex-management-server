@@ -99,7 +99,7 @@ router.put('/servers/:id', authenticate, requireRole('admin', 'operator'), (req,
     return res.status(404).json({ error: 'Server not found' });
   }
 
-  const { name, agent_name, hostname, ip_address, gateway_url, gateway_token, tags } = req.body;
+  const { name, agent_name, hostname, ip_address, gateway_url, gateway_token, tags, avatar_data } = req.body;
 
   const newName = name !== undefined ? name : server.name;
   const newAgentName = agent_name !== undefined ? agent_name : server.agent_name;
@@ -108,6 +108,7 @@ router.put('/servers/:id', authenticate, requireRole('admin', 'operator'), (req,
   const newGatewayUrl = gateway_url !== undefined ? gateway_url : server.gateway_url;
   const newGatewayToken = gateway_token !== undefined ? gateway_token : server.gateway_token;
   const newTags = tags !== undefined ? JSON.stringify(tags) : server.tags;
+  const newAvatarData = avatar_data !== undefined ? avatar_data : server.avatar_data;
 
   if (!newName) {
     return res.status(400).json({ error: 'Server name cannot be empty' });
@@ -115,10 +116,10 @@ router.put('/servers/:id', authenticate, requireRole('admin', 'operator'), (req,
 
   db.prepare(`
     UPDATE servers SET name = ?, agent_name = ?, hostname = ?, ip_address = ?,
-      gateway_url = ?, gateway_token = ?, tags = ?
+      gateway_url = ?, gateway_token = ?, tags = ?, avatar_data = ?
     WHERE id = ?
   `).run(newName, newAgentName, newHostname, newIpAddress,
-    newGatewayUrl, newGatewayToken, newTags, req.params.id);
+    newGatewayUrl, newGatewayToken, newTags, newAvatarData, req.params.id);
 
   audit(req.user.id, 'server_updated', `Updated server: ${newName}`, req.ip, req.params.id);
   res.json({ message: 'Server updated', id: req.params.id });

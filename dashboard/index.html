@@ -1073,6 +1073,80 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   margin-left: auto;
 }
 
+/* Fleet unread badge on server cards */
+.fleet-unread-badge {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  background: var(--red);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(255,107,107,0.4);
+  z-index: 2;
+  animation: badgePulse 2s ease-in-out infinite;
+}
+@keyframes badgePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+/* Fleet nav unread dot */
+.fleet-unread-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--red);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--red);
+  margin-left: 0.3rem;
+  flex-shrink: 0;
+}
+
+/* Sidebar server unread badge */
+.sidebar-unread-badge {
+  background: var(--red);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Fleet card avatar */
+.fleet-card-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.fleet-card-avatar-placeholder {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--accent-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--accent-light);
+  flex-shrink: 0;
+}
+
 /* Toast notification for chat responses */
 .chat-toast {
   position: fixed;
@@ -1141,6 +1215,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
         <div class="nav-item active" data-page="fleet" onclick="navigate('fleet')">
           <span class="icon">🏠</span> Fleet Overview
           <span class="badge-count" id="fleet-count">0</span>
+          <span class="fleet-unread-dot" id="fleet-unread-dot" style="display:none"></span>
         </div>
         <div class="nav-item" data-page="add" onclick="navigate('add')">
           <span class="icon">➕</span> Add Server
@@ -2155,7 +2230,17 @@ function loadAgentAvatar(server) {
   const img = $('sidebar-agent-avatar');
   const placeholder = $('sidebar-agent-avatar-placeholder');
   const avatarBtn = $('btn-avatar-change');
-  // Try to load avatar from server via proxy
+
+  // 1. Try avatar_data from server record (persistent)
+  if (server.avatar_data) {
+    img.src = server.avatar_data;
+    img.style.display = '';
+    placeholder.style.display = 'none';
+    if (avatarBtn) avatarBtn.style.display = '';
+    return;
+  }
+
+  // 2. Fallback: try to load avatar from server via proxy
   const url = `/api/v1/servers/${server.id}/proxy/athena.png`;
   const testImg = new Image();
   testImg.onload = () => {
@@ -4242,7 +4327,11 @@ function openFile(name) {
   const handler = function(d) {
     if (d.type !== 'res' || d.id !== id) return false;
     if (d.ok && d.payload != null) {
-      const content = typeof d.payload === 'string' ? d.payload : (d.payload.content || d.payload.text || JSON.stringify(d.payload, null, 2));
+      let content = typeof d.payload === 'string' ? d.payload : (d.payload.file?.content || d.payload.content || d.payload.text || JSON.stringify(d.payload, null, 2));
+      // Replace literal \n with actual newlines if needed
+      if (content && !content.includes('\n') && content.includes('\\n')) {
+        content = content.replace(/\\n/g, '\n');
+      }
       fileOriginalContent = content;
       $('files-editor').innerHTML = `
         <div class="files-editor-header">

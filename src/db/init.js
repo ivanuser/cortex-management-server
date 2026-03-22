@@ -173,6 +173,15 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_usage_date ON usage_tracking(date);
 `);
 
+// ─── Schema Migrations ──────────────────────────────────────
+// Add avatar_data column to servers if it doesn't exist
+try {
+  db.prepare("SELECT avatar_data FROM servers LIMIT 0").get();
+} catch {
+  db.exec("ALTER TABLE servers ADD COLUMN avatar_data TEXT");
+  console.log('✅ Added avatar_data column to servers table');
+}
+
 // Create default admin user if no users exist
 const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
 if (userCount.count === 0) {
