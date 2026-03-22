@@ -2692,7 +2692,6 @@ function renderSkills() {
   // Try fetching live skills via management server proxy
   if (selectedServer.id) {
     api('/servers/' + selectedServer.id + '/proxy/skills.json')
-      .then(r => r.json())
       .then(data => {
         const installedNames = new Set(data.installed.map(s => s.name));
         const installedCards = data.installed.map(s => {
