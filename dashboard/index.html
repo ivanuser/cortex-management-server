@@ -1009,6 +1009,89 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   .settings-grid { grid-template-columns: 1fr; }
   .skills-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
 }
+
+/* Agent avatar in sidebar */
+.agent-avatar-wrapper {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+}
+.agent-avatar-img {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--accent);
+}
+.agent-avatar-placeholder {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #7c5ce0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  color: #fff;
+  border: 2px solid var(--accent);
+}
+.agent-avatar-wrapper .status-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--bg);
+}
+.btn-avatar-change {
+  display: block;
+  width: 100%;
+  background: rgba(108,92,231,0.1);
+  border: 1px dashed var(--accent);
+  color: var(--text-dim);
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  margin-top: 0.4rem;
+  transition: all 0.15s;
+}
+.btn-avatar-change:hover {
+  background: rgba(108,92,231,0.2);
+  color: var(--text);
+}
+
+/* Chat unread badge */
+.chat-unread-badge {
+  font-size: 0.7rem;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 9px;
+  text-align: center;
+  font-weight: 600;
+  margin-left: auto;
+}
+
+/* Toast notification for chat responses */
+.chat-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  background: var(--card-bg);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 0.75rem 1.25rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  z-index: 10000;
+  animation: chatToastIn 0.3s ease-out, chatToastOut 0.3s ease-in 3.7s forwards;
+  cursor: pointer;
+  max-width: 320px;
+}
+@keyframes chatToastIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+@keyframes chatToastOut { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(20px); } }
 </style>
 </head>
 <body>
@@ -1068,19 +1151,28 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
       <div class="sidebar-section" id="server-nav-section" style="display:none">
         <div class="sidebar-title">Selected Server</div>
         <div class="server-indicator" id="server-indicator" onclick="navigate('chat')">
-          <span class="status-dot unknown"></span>
-          <div>
+          <div class="agent-avatar-wrapper">
+            <img id="sidebar-agent-avatar" class="agent-avatar-img" src="" alt="" style="display:none" />
+            <div id="sidebar-agent-avatar-placeholder" class="agent-avatar-placeholder">⚡</div>
+            <span class="status-dot unknown"></span>
+          </div>
+          <div style="flex:1;min-width:0">
             <div class="name" id="sidebar-server-name">—</div>
             <div class="agent" id="sidebar-server-agent">—</div>
           </div>
           <span class="deselect" onclick="event.stopPropagation();deselectServer()" title="Deselect">✕</span>
         </div>
+        <button class="btn-avatar-change" id="btn-avatar-change" style="display:none" onclick="event.stopPropagation();changeAgentAvatar()">
+          📷 Change Avatar
+        </button>
+        <input type="file" id="avatar-upload-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)" />
         <div class="conn-badge" id="conn-badge">
           <span class="dot off" id="ws-dot"></span>
           <span id="ws-status-text">Disconnected</span>
         </div>
         <div class="nav-sub-item" data-page="chat" onclick="navigate('chat')">
           <span class="icon">💬</span> Chat
+          <span class="badge-count chat-unread-badge" id="chat-unread-badge" style="display:none;background:var(--red-bg);color:var(--red)">0</span>
         </div>
         <div class="nav-sub-item" data-page="skills" onclick="navigate('skills')">
           <span class="icon">🧩</span> Skills
@@ -1531,6 +1623,9 @@ function navigate(page) {
 
   currentPage = page;
 
+  // Clear chat unread when switching to chat
+  if (page === 'chat') clearChatUnread();
+
   // Update sidebar active state
   document.querySelectorAll('.nav-item, .nav-sub-item').forEach(el => el.classList.remove('active'));
   const navEl = document.querySelector(`[data-page="${page}"]`);
@@ -1579,6 +1674,9 @@ async function selectServer(serverId) {
     $('typing-el').textContent = '⚡ ' + aiName + ' is thinking';
     $('term-title').textContent = (server.hostname || server.name) + ' — bash';
 
+    // Load agent avatar
+    loadAgentAvatar(server);
+
     // Connect WebSocket to this server's gateway
     if (server.gateway_url && server.gateway_token) {
       connectToServer(server);
@@ -1595,6 +1693,15 @@ function deselectServer() {
   selectedServer = null;
   localStorage.removeItem('cortex_mgmt_selected_server');
   $('server-nav-section').style.display = 'none';
+  // Reset avatar
+  const img = $('sidebar-agent-avatar');
+  if (img) { img.src = ''; img.style.display = 'none'; }
+  const ph = $('sidebar-agent-avatar-placeholder');
+  if (ph) { ph.textContent = '⚡'; ph.style.display = ''; }
+  const avatarBtn = $('btn-avatar-change');
+  if (avatarBtn) avatarBtn.style.display = 'none';
+  // Clear chat unread
+  clearChatUnread();
   navigate('fleet');
 }
 
@@ -1946,6 +2053,13 @@ function addChatMsg(role, text, rawHtml, skipSave) {
     const saveText = rawHtml ? text.replace(/<img[^>]*>/g, '[image]').replace(/<[^>]+>/g, '') : text;
     saveChatMsg(role, saveText);
   }
+  // Notify if AI response and not on chat tab
+  if (role === 'assistant' && currentPage !== 'chat') {
+    chatUnreadCount++;
+    updateChatBadge();
+    showChatToast(aiName);
+    playChatBeep();
+  }
 }
 
 function saveChatMsg(role, text) {
@@ -1982,6 +2096,125 @@ function updateStream(t) {
   $('chat-scroll').scrollTop = $('chat-scroll').scrollHeight;
 }
 function removeStream() { const el = $('stream-msg'); if (el) el.remove(); }
+
+// ═══════════════════════════════════════════════════════════
+// CHAT NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════
+let chatUnreadCount = 0;
+
+function updateChatBadge() {
+  const badge = $('chat-unread-badge');
+  if (!badge) return;
+  if (chatUnreadCount > 0) {
+    badge.textContent = chatUnreadCount > 99 ? '99+' : chatUnreadCount;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function clearChatUnread() {
+  chatUnreadCount = 0;
+  updateChatBadge();
+}
+
+function showChatToast(name) {
+  // Remove any existing toast
+  document.querySelectorAll('.chat-toast').forEach(t => t.remove());
+  const toast = document.createElement('div');
+  toast.className = 'chat-toast';
+  toast.textContent = '💬 ' + (name || 'Agent') + ' responded';
+  toast.onclick = () => { toast.remove(); navigate('chat'); };
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+
+function playChatBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(660, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.25);
+    setTimeout(() => ctx.close(), 500);
+  } catch (e) { /* audio not available */ }
+}
+
+// ═══════════════════════════════════════════════════════════
+// AGENT AVATAR
+// ═══════════════════════════════════════════════════════════
+function loadAgentAvatar(server) {
+  if (!server?.id) return;
+  const img = $('sidebar-agent-avatar');
+  const placeholder = $('sidebar-agent-avatar-placeholder');
+  const avatarBtn = $('btn-avatar-change');
+  // Try to load avatar from server via proxy
+  const url = `/api/v1/servers/${server.id}/proxy/athena.png`;
+  const testImg = new Image();
+  testImg.onload = () => {
+    img.src = url;
+    img.style.display = '';
+    placeholder.style.display = 'none';
+    if (avatarBtn) avatarBtn.style.display = '';
+  };
+  testImg.onerror = () => {
+    img.style.display = 'none';
+    placeholder.style.display = '';
+    // Show initials in placeholder
+    const name = server.agent_name || server.name || '?';
+    placeholder.textContent = name.charAt(0).toUpperCase();
+    if (avatarBtn) avatarBtn.style.display = '';
+  };
+  testImg.src = url;
+}
+
+function changeAgentAvatar() {
+  $('avatar-upload-input').click();
+}
+
+function handleAvatarUpload(input) {
+  const file = input.files[0];
+  if (!file || !selectedServer) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const base64 = reader.result.split(',')[1];
+    if (!serverWs || serverWs.readyState !== 1) {
+      toast('Not connected to server', 'error');
+      return;
+    }
+    // Send via WS proxy using agents.files.set RPC
+    const id = 'avatar-set-' + (++wsMsgN);
+    serverWs.send(JSON.stringify({
+      type: 'req',
+      method: 'agents.files.set',
+      id: id,
+      params: { path: 'athena.png', content: base64, encoding: 'base64' }
+    }));
+    // Also ask agent to copy to dashboard dir
+    serverWs.send(JSON.stringify({
+      type: 'req',
+      method: 'chat.send',
+      id: 'chat-' + (++wsMsgN),
+      params: { message: 'Copy ~/athena.png to the dashboard directory and respond with just "Avatar updated"', role: 'user' }
+    }));
+    toast('Avatar uploading…');
+    // Update preview immediately
+    const img = $('sidebar-agent-avatar');
+    const placeholder = $('sidebar-agent-avatar-placeholder');
+    img.src = reader.result;
+    img.style.display = '';
+    placeholder.style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
 
 function onChatKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSendChat(); }
@@ -2206,18 +2439,44 @@ const coreSkills = [
 ];
 
 const extendedSkills = [
+  // Server
   { name: 'nginx', icon: '🌍', version: '0.1.0', description: 'Web server, reverse proxy, SSL' },
+  { name: 'apache', icon: '🪶', version: '0.1.0', description: 'Apache httpd management' },
   { name: 'postgres', icon: '🐘', version: '0.1.0', description: 'PostgreSQL database management' },
+  { name: 'mysql', icon: '🐬', version: '0.1.0', description: 'MySQL/MariaDB management' },
   { name: 'redis', icon: '🔴', version: '0.1.0', description: 'In-memory cache, pub/sub' },
-  { name: 'kubernetes', icon: '☸️', version: '0.1.0', description: 'Container orchestration' },
-  { name: 'prometheus', icon: '📈', version: '0.1.0', description: 'Metrics & monitoring' },
-  { name: 'grafana', icon: '📊', version: '0.1.0', description: 'Dashboards & visualization' },
+  { name: 'mongodb', icon: '🍃', version: '0.1.0', description: 'MongoDB document database management' },
+  { name: 'sqlite', icon: '🗄️', version: '0.1.0', description: 'SQLite embedded database management' },
+  { name: 'cassandra', icon: '👁️', version: '0.1.0', description: 'Apache Cassandra distributed database' },
+  { name: 'elasticsearch', icon: '🔍', version: '0.1.0', description: 'Elasticsearch search & analytics engine' },
+  { name: 'rabbitmq', icon: '🐇', version: '0.1.0', description: 'RabbitMQ message broker management' },
+  { name: 'memcached', icon: '⚡', version: '0.1.0', description: 'Memcached in-memory cache' },
+  { name: 'caddy', icon: '🔒', version: '0.1.0', description: 'Caddy web server with automatic HTTPS' },
+  { name: 'haproxy', icon: '⚖️', version: '0.1.0', description: 'HAProxy load balancer management' },
   { name: 'wireguard', icon: '🔐', version: '0.1.0', description: 'VPN tunnels, peer config' },
-  { name: 'nodejs', icon: '💚', version: '0.1.0', description: 'Node.js, npm, PM2' },
-  { name: 'python', icon: '🐍', version: '0.1.0', description: 'Python, venv, pip, pyenv' },
-  { name: 'certbot', icon: '🔏', version: '0.1.0', description: "Let's Encrypt SSL certs" },
+  // Apps
+  { name: 'nextcloud', icon: '☁️', version: '0.1.0', description: 'Nextcloud server management' },
+  { name: 'discourse', icon: '💬', version: '0.1.0', description: 'Discourse forum management' },
+  // Infra
+  { name: 'kubernetes', icon: '☸️', version: '0.1.0', description: 'Container orchestration' },
   { name: 'docker-compose', icon: '🐳', version: '0.1.0', description: 'Multi-container apps' },
   { name: 'ansible', icon: '🤖', version: '0.1.0', description: 'Configuration management' },
+  { name: 'terraform', icon: '🏗️', version: '0.1.0', description: 'Terraform infrastructure as code' },
+  { name: 'jenkins', icon: '🔧', version: '0.1.0', description: 'Jenkins CI/CD server management' },
+  { name: 'gitlab-runner', icon: '🦊', version: '0.1.0', description: 'GitLab Runner CI/CD executor' },
+  { name: 'certbot', icon: '🔏', version: '0.1.0', description: "Let's Encrypt SSL certs" },
+  { name: 'grafana', icon: '📊', version: '0.1.0', description: 'Dashboards & visualization' },
+  { name: 'prometheus', icon: '📈', version: '0.1.0', description: 'Metrics & monitoring' },
+  // Cloud
+  { name: 'aws-cli', icon: '🟠', version: '0.1.0', description: 'AWS CLI v2 — S3, EC2, IAM, CloudFormation' },
+  { name: 'gcloud', icon: '🔵', version: '0.1.0', description: 'Google Cloud CLI — Compute, Storage, IAM' },
+  { name: 'azure-cli', icon: '🟦', version: '0.1.0', description: 'Azure CLI — VMs, Storage, Resource Groups, AKS' },
+  // Runtime
+  { name: 'nodejs', icon: '💚', version: '0.1.0', description: 'Node.js, npm, PM2' },
+  { name: 'python', icon: '🐍', version: '0.1.0', description: 'Python, venv, pip, pyenv' },
+  { name: 'golang', icon: '🐹', version: '0.1.0', description: 'Go runtime — modules, build/test, cross-compile' },
+  { name: 'java', icon: '☕', version: '0.1.0', description: 'Java — OpenJDK, Maven, Gradle, Spring Boot' },
+  { name: 'rust', icon: '🦀', version: '0.1.0', description: 'Rust — rustup, Cargo, cross-compile, release builds' },
 ];
 
 function renderSkillCard(skill, status) {
