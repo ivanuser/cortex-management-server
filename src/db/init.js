@@ -64,6 +64,8 @@ db.exec(`
     registered_by TEXT,
     tags TEXT DEFAULT '[]',
     config TEXT DEFAULT '{}',
+    avatar_data TEXT,
+    skills_count INTEGER DEFAULT 0,
     FOREIGN KEY (registered_by) REFERENCES users(id)
   );
 
@@ -174,12 +176,19 @@ db.exec(`
 `);
 
 // ─── Schema Migrations ──────────────────────────────────────
-// Add avatar_data column to servers if it doesn't exist
-try {
-  db.prepare("SELECT avatar_data FROM servers LIMIT 0").get();
-} catch {
-  db.exec("ALTER TABLE servers ADD COLUMN avatar_data TEXT");
-  console.log('✅ Added avatar_data column to servers table');
+// Auto-migrate: add columns that may not exist in older databases
+const migrations = [
+  { table: 'servers', column: 'avatar_data', sql: 'ALTER TABLE servers ADD COLUMN avatar_data TEXT' },
+  { table: 'servers', column: 'skills_count', sql: 'ALTER TABLE servers ADD COLUMN skills_count INTEGER DEFAULT 0' },
+  { table: 'install_tokens', column: 'config', sql: "ALTER TABLE install_tokens ADD COLUMN config TEXT DEFAULT '{}'" },
+];
+for (const m of migrations) {
+  try {
+    db.prepare(`SELECT ${m.column} FROM ${m.table} LIMIT 0`).get();
+  } catch {
+    db.exec(m.sql);
+    console.log(`✅ Migration: added ${m.column} to ${m.table}`);
+  }
 }
 
 // Create default admin user if no users exist

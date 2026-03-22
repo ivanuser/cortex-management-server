@@ -1000,6 +1000,19 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 .net-stat-card .val { font-size: 1.2rem; font-weight: 700; }
 .net-stat-card .lbl { font-size: 0.6rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.1rem; }
 
+/* ─── Cron Badges ───────────────────── */
+.cron-badge {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.15rem 0.55rem; border-radius: 12px; font-size: 0.65rem; font-weight: 600;
+}
+.cron-enabled { background: var(--green-bg); color: var(--green); }
+.cron-disabled { background: rgba(136,136,160,0.15); color: var(--text-muted); }
+.cron-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+.cron-dot.enabled { background: var(--green); box-shadow: 0 0 4px var(--green); }
+.cron-dot.disabled { background: var(--text-muted); }
+
 /* ─── Responsive ────────────────────── */
 @media (max-width: 768px) {
   .sidebar { display: none; }
@@ -1276,6 +1289,9 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
         <div class="nav-sub-item" data-page="packages" onclick="navigate('packages')">
           <span class="icon">📦</span> Packages
         </div>
+        <div class="nav-sub-item" data-page="cron" onclick="navigate('cron')">
+          <span class="icon">🕐</span> Cron
+        </div>
       </div>
 
       <div class="sidebar-section">
@@ -1486,6 +1502,21 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
         </div>
       </div>
 
+      <!-- Cron Page -->
+      <div class="page" id="page-cron">
+        <div class="mgmt-container">
+          <div class="mgmt-toolbar">
+            <h3>🕐 <span style="color:var(--accent-light)">Cron Jobs</span></h3>
+            <div style="display:flex;gap:0.5rem">
+              <button class="btn-skills" onclick="loadCron()">↻ Refresh</button>
+            </div>
+          </div>
+          <div class="mgmt-body" id="cron-content">
+            <div class="mgmt-loading">Loading cron jobs</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Users Page -->
       <div class="page" id="page-users">
         <div class="page-scroll" id="users-content"></div>
@@ -1691,7 +1722,7 @@ async function showApp() {
 // ═══════════════════════════════════════════════════════════
 function navigate(page) {
   // Server pages require a selected server
-  if (['chat', 'skills', 'terminal', 'health', 'files', 'services', 'docker', 'logs', 'network', 'packages'].includes(page) && !selectedServer) {
+  if (['chat', 'skills', 'terminal', 'health', 'files', 'services', 'docker', 'logs', 'network', 'packages', 'cron'].includes(page) && !selectedServer) {
     toast('Select a server first', 'error');
     page = 'fleet';
   }
@@ -1719,7 +1750,7 @@ function navigate(page) {
     fleet: renderFleet, add: renderAdd, chat: renderChat, skills: renderSkills,
     terminal: renderTerminal, health: renderHealth, files: renderFiles,
     services: renderServices, docker: renderDocker, logs: renderLogs,
-    network: renderNetwork, packages: renderPackages, users: renderUsers,
+    network: renderNetwork, packages: renderPackages, cron: renderCron, users: renderUsers,
     settings: renderSettings, audit: renderAudit, schedules: renderSchedules,
     'incidents-page': renderIncidentsPage, analytics: renderAnalytics
   };
@@ -5071,6 +5102,232 @@ function updateAllPackages() {
       setTimeout(loadPackages, 3000);
     }
   );
+}
+
+// ═══════════════════════════════════════════════════════════
+// CRON JOBS TAB
+// ═══════════════════════════════════════════════════════════
+function renderCron() {
+  if (!selectedServer) return;
+  loadCron();
+}
+
+function cronHumanReadable(expr) {
+  if (!expr) return '';
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length < 5) return expr;
+  const [min, hour, dom, mon, dow] = parts;
+  // Common patterns
+  if (min === '*' && hour === '*' && dom === '*' && mon === '*' && dow === '*') return 'Every minute';
+  if (min.startsWith('*/')) return `Every ${min.slice(2)} minutes`;
+  if (hour.startsWith('*/') && min === '0') return `Every ${hour.slice(2)} hours`;
+  if (dom === '*' && mon === '*' && dow === '*') {
+    const h = hour === '*' ? 'every hour' : `${hour.padStart(2,'0')}:${min.padStart(2,'0')}`;
+    if (hour !== '*' && min !== '*') return `Daily at ${h}`;
+    if (hour === '*') return `At minute ${min}`;
+  }
+  if (dom === '*' && mon === '*' && dow !== '*') {
+    const days = {'0':'Sun','1':'Mon','2':'Tue','3':'Wed','4':'Thu','5':'Fri','6':'Sat','7':'Sun'};
+    const d = days[dow] || dow;
+    return `${d} at ${hour.padStart(2,'0')}:${min.padStart(2,'0')}`;
+  }
+  if (mon === '*' && dow === '*' && dom !== '*') return `Day ${dom} at ${hour.padStart(2,'0')}:${min.padStart(2,'0')}`;
+  return expr;
+}
+
+async function loadCron() {
+  const el = $('cron-content');
+  el.innerHTML = '<div class="mgmt-loading">Loading cron jobs</div>';
+
+  let agentCronHtml = '';
+  let systemCronHtml = '';
+  let agentDone = false, systemDone = false;
+
+  function renderBoth() {
+    if (!agentDone || !systemDone) return;
+    el.innerHTML = agentCronHtml + systemCronHtml;
+  }
+
+  // 1. Agent Cron Jobs via WS RPC
+  if (serverWs && serverWs.readyState === 1) {
+    const id = 'cron-list-' + (++wsMsgN);
+    const handler = function(d) {
+      if (d.type !== 'res' || d.id !== id) return false;
+      if (d.ok && d.payload) {
+        const jobs = d.payload.jobs || d.payload || [];
+        agentCronHtml = renderAgentCronSection(Array.isArray(jobs) ? jobs : []);
+      } else {
+        agentCronHtml = renderAgentCronSection([]);
+      }
+      agentDone = true;
+      renderBoth();
+      return true;
+    };
+    addOneTimeWsHandler(handler);
+    serverWs.send(JSON.stringify({ type: 'req', method: 'cron.list', id: id }));
+    // Timeout fallback
+    setTimeout(() => { if (!agentDone) { agentCronHtml = renderAgentCronSection([]); agentDone = true; renderBoth(); } }, 8000);
+  } else {
+    agentCronHtml = `<div class="mgmt-notice" style="margin-bottom:1.5rem"><span class="icon">⚠️</span>Not connected to gateway — cannot fetch agent cron jobs</div>`;
+    agentDone = true;
+  }
+
+  // 2. System Crontab from sysinfo endpoint
+  try {
+    const data = await api('/servers/' + selectedServer.id + '/proxy/cron.json');
+    const entries = data.system_cron || [];
+    systemCronHtml = renderSystemCronSection(entries, data.ts);
+  } catch {
+    systemCronHtml = renderSystemCronSection([], null);
+  }
+  systemDone = true;
+  renderBoth();
+}
+
+function renderAgentCronSection(jobs) {
+  let html = `<div style="margin-bottom:2rem">
+    <h3 style="margin-bottom:1rem;font-size:0.95rem;display:flex;align-items:center;gap:0.5rem">
+      <span>⚡</span> Agent Scheduled Tasks
+      <span style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:12px;background:var(--accent-glow);color:var(--accent-light);font-weight:600">${jobs.length}</span>
+    </h3>`;
+
+  if (jobs.length === 0) {
+    html += `<div class="mgmt-notice"><span class="icon">ℹ️</span>No agent cron jobs found. The gateway may not have any scheduled tasks configured.</div>`;
+  } else {
+    html += `<div class="table-wrap"><table class="data-table">
+      <thead><tr><th>Name</th><th>Schedule</th><th>Human Readable</th><th>Status</th><th>Last Run</th><th>Next Run</th><th>Actions</th></tr></thead><tbody>`;
+    for (const job of jobs) {
+      const schedule = job.schedule || job.cron || job.expression || '';
+      const enabled = job.enabled !== false;
+      const statusBadge = enabled
+        ? '<span class="cron-badge cron-enabled"><span class="cron-dot enabled"></span>Enabled</span>'
+        : '<span class="cron-badge cron-disabled"><span class="cron-dot disabled"></span>Disabled</span>';
+      const lastRun = job.lastRun || job.last_run || null;
+      const nextRun = job.nextRun || job.next_run || null;
+      const jobId = job.id || job.name || '';
+      html += `<tr>
+        <td><strong style="font-size:0.82rem">${esc(job.name || job.id || '—')}</strong></td>
+        <td><code style="font-size:0.72rem;background:var(--bg);padding:0.2rem 0.5rem;border-radius:4px">${esc(schedule)}</code></td>
+        <td style="font-size:0.75rem;color:var(--text-dim)">${esc(cronHumanReadable(schedule))}</td>
+        <td>${statusBadge}</td>
+        <td style="font-size:0.72rem;color:var(--text-muted)">${lastRun ? timeAgo(typeof lastRun === 'number' ? new Date(lastRun).toISOString() : lastRun) : '—'}</td>
+        <td style="font-size:0.72rem;color:var(--text-muted)">${nextRun ? timeAgo(typeof nextRun === 'number' ? new Date(nextRun).toISOString() : nextRun) : '—'}</td>
+        <td style="white-space:nowrap">
+          <button class="action-btn" onclick="toggleAgentCron('${esc(jobId)}', ${!enabled})" title="${enabled ? 'Disable' : 'Enable'}">${enabled ? '⏸ Disable' : '▶ Enable'}</button>
+          <button class="action-btn" onclick="runAgentCron('${esc(jobId)}')" title="Run Now">⚡ Run</button>
+        </td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderSystemCronSection(entries, ts) {
+  let html = `<div>
+    <h3 style="margin-bottom:1rem;font-size:0.95rem;display:flex;align-items:center;gap:0.5rem">
+      <span>🖥️</span> System Crontab
+      <span style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:12px;background:var(--blue-bg);color:var(--blue);font-weight:600">${entries.length}</span>
+      <button class="btn-skills" style="margin-left:auto;font-size:0.72rem" onclick="showAddSystemCronModal()">➕ Add Entry</button>
+    </h3>`;
+
+  if (entries.length === 0) {
+    html += `<div class="mgmt-notice"><span class="icon">ℹ️</span>No system crontab entries found. Install the updated sysinfo script to see system cron jobs.</div>`;
+  } else {
+    html += `<div class="table-wrap"><table class="data-table">
+      <thead><tr><th>User</th><th>Schedule</th><th>Human Readable</th><th>Command</th></tr></thead><tbody>`;
+    for (const entry of entries) {
+      html += `<tr>
+        <td><span class="badge badge-operator">${esc(entry.user || 'root')}</span></td>
+        <td><code style="font-size:0.72rem;background:var(--bg);padding:0.2rem 0.5rem;border-radius:4px">${esc(entry.schedule || '')}</code></td>
+        <td style="font-size:0.75rem;color:var(--text-dim)">${esc(cronHumanReadable(entry.schedule || ''))}</td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(entry.command || '')}">${esc(entry.command || '')}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  if (ts) html += `<div style="text-align:right;font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">Updated ${timeAgo(new Date(ts * 1000).toISOString())}</div>`;
+  html += '</div>';
+  return html;
+}
+
+function toggleAgentCron(jobId, enable) {
+  if (!serverWs || serverWs.readyState !== 1) { toast('Not connected', 'error'); return; }
+  const id = 'cron-toggle-' + (++wsMsgN);
+  const handler = function(d) {
+    if (d.type !== 'res' || d.id !== id) return false;
+    if (d.ok) {
+      toast(enable ? 'Cron job enabled' : 'Cron job disabled');
+      setTimeout(loadCron, 500);
+    } else {
+      toast('Failed to toggle: ' + (d.error?.message || 'Unknown error'), 'error');
+    }
+    return true;
+  };
+  addOneTimeWsHandler(handler);
+  serverWs.send(JSON.stringify({ type: 'req', method: 'cron.toggle', id: id, params: { jobId: jobId, enabled: enable } }));
+}
+
+function runAgentCron(jobId) {
+  if (!serverWs || serverWs.readyState !== 1) { toast('Not connected', 'error'); return; }
+  const id = 'cron-run-' + (++wsMsgN);
+  const handler = function(d) {
+    if (d.type !== 'res' || d.id !== id) return false;
+    if (d.ok) {
+      toast('Cron job triggered');
+    } else {
+      toast('Failed to run: ' + (d.error?.message || 'Unknown error'), 'error');
+    }
+    return true;
+  };
+  addOneTimeWsHandler(handler);
+  serverWs.send(JSON.stringify({ type: 'req', method: 'cron.run', id: id, params: { jobId: jobId } }));
+}
+
+function showAddSystemCronModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>➕ Add System Cron Entry</h3>
+      <div class="form-group">
+        <label>Cron Expression</label>
+        <input type="text" id="sys-cron-expr" placeholder="*/30 * * * *">
+        <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.25rem">
+          Format: min hour dom mon dow — e.g., <code>*/5 * * * *</code> (every 5 min), <code>0 3 * * *</code> (daily 3am)
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Command</label>
+        <input type="text" id="sys-cron-cmd" placeholder="/usr/local/bin/my-script">
+      </div>
+      <div class="form-group">
+        <label>User (optional, default: root)</label>
+        <input type="text" id="sys-cron-user" placeholder="root" value="root">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="addSystemCronEntry()">Add Entry</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function addSystemCronEntry() {
+  const expr = $('sys-cron-expr')?.value.trim();
+  const cmd = $('sys-cron-cmd')?.value.trim();
+  const user = $('sys-cron-user')?.value.trim() || 'root';
+  if (!expr || !cmd) { toast('Fill in expression and command', 'error'); return; }
+
+  const chatCmd = `Run: (crontab -l 2>/dev/null; echo "${expr} ${cmd}") | crontab - && echo "Cron entry added successfully" && echo "---CORTEX_CMD_END---"`;
+  toast('Adding cron entry…');
+  document.querySelector('.modal-overlay')?.remove();
+  sendCmdViaChat(chatCmd, function(output) {
+    toast('Cron entry added');
+    setTimeout(loadCron, 2000);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════
