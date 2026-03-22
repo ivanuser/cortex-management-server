@@ -1961,10 +1961,9 @@ function renderSkills() {
       <div class="skills-grid" id="sk-available-grid"></div>
     </div>`;
 
-  // Try fetching live skills from the server
-  if (selectedServer.gateway_url) {
-    const base = selectedServer.gateway_url.replace(/\/$/, '').replace(/^ws/, 'http');
-    fetch(base + '/skills.json?t=' + Date.now())
+  // Try fetching live skills via management server proxy
+  if (selectedServer.id) {
+    api('/servers/' + selectedServer.id + '/proxy/skills.json')
       .then(r => r.json())
       .then(data => {
         const installedNames = new Set(data.installed.map(s => s.name));

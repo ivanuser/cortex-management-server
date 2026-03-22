@@ -150,6 +150,29 @@ router.delete('/servers/:id', authenticate, requireRole('admin'), (req, res) => 
 });
 
 /**
+ * GET /api/v1/servers/:id/proxy/:file — proxy file requests to server gateway
+ * Solves mixed content (HTTPS dashboard → HTTP server)
+ */
+router.get('/servers/:id/proxy/:file', authenticate, async (req, res) => {
+  const server = db.prepare('SELECT gateway_url FROM servers WHERE id = ?').get(req.params.id);
+  if (!server || !server.gateway_url) {
+    return res.status(404).json({ error: 'Server not found' });
+  }
+  const url = server.gateway_url.replace(/\/+$/, '') + '/' + req.params.file;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return res.status(response.status).json({ error: 'Upstream error' });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to reach server: ' + err.message });
+  }
+});
+
+/**
  * GET /api/v1/servers/:id/health — health history
  */
 router.get('/servers/:id/health', authenticate, (req, res) => {
