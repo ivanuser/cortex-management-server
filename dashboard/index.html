@@ -3180,7 +3180,8 @@ function renderSkills() {
 
         $('sk-installed').textContent = data.count;
         $('sk-available').textContent = available.length;
-        $('sk-total').textContent = data.count + available.length;
+        const allNames = new Set([...data.installed.map(s=>s.name), ...extendedSkills.map(s=>s.name)]);
+        $('sk-total').textContent = allNames.size;
         $('sk-installed-badge').textContent = data.count;
         $('sk-available-badge').textContent = available.length;
       })
@@ -3190,7 +3191,7 @@ function renderSkills() {
         $('sk-available-grid').innerHTML = extendedSkills.map(s => renderSkillCard(s, 'available')).join('');
         $('sk-installed').textContent = coreSkills.length;
         $('sk-available').textContent = extendedSkills.length;
-        $('sk-total').textContent = coreSkills.length + extendedSkills.length;
+        const allFallback = new Set([...coreSkills.map(s=>s.name), ...extendedSkills.map(s=>s.name)]); $('sk-total').textContent = allFallback.size;
         $('sk-installed-badge').textContent = coreSkills.length;
         $('sk-available-badge').textContent = extendedSkills.length;
       });
@@ -3199,7 +3200,7 @@ function renderSkills() {
     $('sk-available-grid').innerHTML = extendedSkills.map(s => renderSkillCard(s, 'available')).join('');
     $('sk-installed').textContent = coreSkills.length;
     $('sk-available').textContent = extendedSkills.length;
-    $('sk-total').textContent = coreSkills.length + extendedSkills.length;
+    const allFallback = new Set([...coreSkills.map(s=>s.name), ...extendedSkills.map(s=>s.name)]); $('sk-total').textContent = allFallback.size;
     $('sk-installed-badge').textContent = coreSkills.length;
     $('sk-available-badge').textContent = extendedSkills.length;
   }
