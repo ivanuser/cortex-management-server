@@ -559,6 +559,33 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   background: linear-gradient(90deg, var(--accent), var(--blue)); opacity: 0; transition: opacity 0.2s;
 }
 .skill-card:hover { border-color: var(--border-glow); box-shadow: 0 4px 20px rgba(0,0,0,0.2); transform: translateY(-2px); }
+.skill-modal-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7); z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.skill-modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; width: 90%; max-width: 700px; max-height: 85vh;
+  display: flex; flex-direction: column; box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+.skill-modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border);
+}
+.skill-modal-body {
+  padding: 1.5rem; overflow-y: auto; font-size: 0.85rem; line-height: 1.7;
+}
+.skill-modal-body pre { background: #0a0c14; border: 1px solid var(--border); padding: 0.8rem; border-radius: 8px; overflow-x: auto; font-size: 0.78rem; }
+.skill-modal-body code { background: rgba(0,0,0,0.3); padding: 0.1rem 0.4rem; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.8em; }
+.skill-modal-body h2, .skill-modal-body h3 { color: var(--accent-light); margin: 1rem 0 0.5rem; }
+.skill-modal-body ul, .skill-modal-body ol { padding-left: 1.5rem; }
+.skill-modal-body li { margin: 0.25rem 0; }
+.skill-modal-body table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; }
+.skill-modal-body th, .skill-modal-body td { padding: 0.4rem 0.6rem; border: 1px solid var(--border); font-size: 0.8rem; }
+.skill-modal-body th { background: var(--bg); color: var(--text-dim); }
 .skill-card:hover::before { opacity: 1; }
 .skill-card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.6rem; }
 .skill-card-icon { font-size: 1.5rem; line-height: 1; }
@@ -3206,9 +3233,80 @@ function renderSkills() {
   }
 }
 
-function skillInfo(name) {
-  navigate('chat');
-  setTimeout(() => qcmd('Show me the full details of your ' + name + ' skill — what commands are available and what it can do.'), 100);
+async function skillInfo(name) {
+  // Try to fetch SKILL.md from the server first (installed skill)
+  let content = null;
+  if (selectedServer?.id) {
+    try {
+      // Try via WS RPC agents.files.get
+      const id = 'skill-info-' + (++wsMsgN);
+      content = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject('timeout'), 10000);
+        const handler = (d) => {
+          if (d.type === 'res' && d.id === id) {
+            clearTimeout(timeout);
+            if (d.ok && d.payload) {
+              resolve(d.payload.file?.content || d.payload.content || JSON.stringify(d.payload));
+            } else {
+              reject(d.error?.message || 'not found');
+            }
+            return true;
+          }
+          return false;
+        };
+        if (!wsOneTimeHandlers) window.wsOneTimeHandlers = [];
+        wsOneTimeHandlers.push(handler);
+        serverWs.send(JSON.stringify({
+          type: 'req', method: 'agents.files.get', id,
+          params: { agentId: 'main', name: 'skills/' + name + '/SKILL.md' }
+        }));
+      });
+    } catch { content = null; }
+  }
+
+  // Fallback: fetch from GitHub
+  if (!content) {
+    // Try different paths in the skills repo
+    for (const prefix of ['server', 'apps', 'infra', 'security', 'cloud', 'runtime']) {
+      try {
+        const res = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-server-skills/main/' + prefix + '/' + name + '/SKILL.md');
+        if (res.ok) { content = await res.text(); break; }
+      } catch {}
+    }
+  }
+
+  if (!content) {
+    toast('Could not load skill details for ' + name, 'error');
+    return;
+  }
+
+  // Show modal with rendered markdown
+  const all = [...coreSkills, ...extendedSkills];
+  const meta = all.find(s => s.name === name) || { name, icon: '📦', description: '' };
+  const isInstalled = document.querySelector('.skill-card.installed [onclick*="' + name + '"]') !== null;
+
+  const modal = document.createElement('div');
+  modal.className = 'skill-modal-overlay';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.innerHTML = `
+    <div class="skill-modal">
+      <div class="skill-modal-header">
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <span style="font-size:1.5rem">${meta.icon || '📦'}</span>
+          <div>
+            <h2 style="margin:0;font-size:1.2rem">${esc(name)}</h2>
+            <span style="color:var(--text-dim);font-size:0.8rem">${esc(meta.description || '')}</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          ${!isInstalled ? '<button class="btn-primary" style="padding:0.4rem 1rem;font-size:0.8rem" onclick="this.closest(\'.skill-modal-overlay\').remove();installSkill(\'' + name + '\')">↓ Install</button>' : '<span style="color:var(--green);font-size:0.8rem">✓ Installed</span>'}
+          <button class="btn-ghost" onclick="this.closest('.skill-modal-overlay').remove()">✕</button>
+        </div>
+      </div>
+      <div class="skill-modal-body">${fmtText(content)}</div>
+    </div>
+  `;
+  document.body.appendChild(modal);
 }
 
 function installSkill(name) {
