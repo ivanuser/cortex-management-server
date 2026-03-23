@@ -3164,8 +3164,59 @@ function renderSkillCard(skill, status) {
   </div>`;
 }
 
-function renderSkills() {
+// Icon mapping for skills without hardcoded icons
+const skillIconMap = {
+  'nginx':'🌍','apache':'🪶','postgres':'🐘','mysql':'🐬','redis':'🔴','mongodb':'🍃',
+  'elasticsearch':'🔎','cassandra':'👁️','sqlite':'📄','caddy':'🔒','haproxy':'⚖️',
+  'rabbitmq':'🐰','memcached':'⚡','wireguard':'🔐','nextcloud':'☁️','discourse':'💬',
+  'kubernetes':'☸️','terraform':'🏗️','ansible':'🤖','prometheus':'📈','grafana':'📊',
+  'jenkins':'🏭','gitlab-runner':'🦊','certbot':'🔏','docker-compose':'🐳',
+  'aws-cli':'☁️','gcloud':'🌐','azure-cli':'🔵','nodejs':'💚','python':'🐍',
+  'golang':'🔷','java':'☕','rust':'🦀','openvas':'🛡️','splunk':'📊','nessus':'🔍',
+  'wazuh':'🛡️','compliance-scan':'📋','cloudflare-install':'🌐','cloudflare-ops':'🔧',
+  'default':'📦'
+};
+
+let gitHubManifestLoaded = false;
+
+async function loadGitHubManifest() {
+  if (gitHubManifestLoaded) return;
+  try {
+    const res = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-server-skills/main/manifest.json');
+    if (!res.ok) return;
+    const manifest = await res.json();
+    const skills = manifest.skills || {};
+    // Merge into extendedSkills — add any missing
+    const existingNames = new Set(extendedSkills.map(s => s.name));
+    for (const [path, info] of Object.entries(skills)) {
+      const name = path.split('/').pop();
+      if (!existingNames.has(name)) {
+        extendedSkills.push({
+          name,
+          icon: skillIconMap[name] || skillIconMap.default,
+          version: info.version || '0.1.0',
+          description: info.description || name
+        });
+      } else {
+        // Update version/description from GitHub
+        const existing = extendedSkills.find(s => s.name === name);
+        if (existing) {
+          if (info.version) existing.version = info.version;
+          if (info.description) existing.description = info.description;
+        }
+      }
+    }
+    gitHubManifestLoaded = true;
+    console.log('[Skills] Loaded manifest from GitHub:', Object.keys(skills).length, 'skills');
+  } catch (e) {
+    console.log('[Skills] GitHub manifest fetch failed:', e.message);
+  }
+}
+
+async function renderSkills() {
   if (!selectedServer) return;
+  // Fetch latest skill info from GitHub
+  await loadGitHubManifest();
   const el = $('skills-content');
 
   el.innerHTML = `
