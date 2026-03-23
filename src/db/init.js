@@ -159,6 +159,20 @@ db.exec(`
     FOREIGN KEY (created_by) REFERENCES users(id)
   );
 
+  -- Phase 6: Notifications (from server agents)
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    server_id TEXT,
+    type TEXT DEFAULT 'info',
+    message TEXT,
+    read INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_notifications_server_id ON notifications(server_id);
+  CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+  CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
+
   -- Phase 5: Usage Tracking
   CREATE TABLE IF NOT EXISTS usage_tracking (
     id TEXT PRIMARY KEY,

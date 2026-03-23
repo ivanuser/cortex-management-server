@@ -876,6 +876,79 @@ router.delete('/backups/:id', authenticate, requireRole('admin'), (req, res) => 
   res.json({ message: 'Backup deleted' });
 });
 
+// ─── Notifications ──────────────────────────────────────────
+
+/**
+ * POST /api/v1/notifications — receive notification from a server agent
+ * Authenticated via X-Server-Token header matched against stored gateway_token
+ */
+router.post('/notifications', (req, res) => {
+  const serverToken = req.headers['x-server-token'];
+  if (!serverToken) {
+    return res.status(401).json({ error: 'X-Server-Token header required' });
+  }
+
+  // Find server by gateway_token
+  const server = db.prepare('SELECT id, name FROM servers WHERE gateway_token = ?').get(serverToken);
+  if (!server) {
+    return res.status(401).json({ error: 'Invalid server token' });
+  }
+
+  const { type, message, server_id } = req.body;
+  const id = crypto.randomUUID();
+  const notifType = ['info', 'warning', 'alert', 'critical'].includes(type) ? type : 'info';
+
+  // Use the server_id from the token match (more reliable than body)
+  db.prepare(
+    'INSERT INTO notifications (id, server_id, type, message) VALUES (?, ?, ?, ?)'
+  ).run(id, server.id, notifType, message || 'No message');
+
+  res.status(201).json({ id, server_id: server.id, type: notifType, message });
+});
+
+/**
+ * GET /api/v1/notifications — list recent notifications (for dashboard)
+ */
+router.get('/notifications', authenticate, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const unreadOnly = req.query.unread === 'true';
+
+  let where = '';
+  if (unreadOnly) where = 'WHERE n.read = 0';
+
+  const notifications = db.prepare(`
+    SELECT n.*, s.name AS server_name
+    FROM notifications n
+    LEFT JOIN servers s ON s.id = n.server_id
+    ${where}
+    ORDER BY n.created_at DESC
+    LIMIT ?
+  `).all(limit);
+
+  const unreadCount = db.prepare('SELECT COUNT(*) as count FROM notifications WHERE read = 0').get();
+
+  res.json({ notifications, unread_count: unreadCount.count });
+});
+
+/**
+ * PUT /api/v1/notifications/:id/read — mark a single notification as read
+ */
+router.put('/notifications/:id/read', authenticate, (req, res) => {
+  const notif = db.prepare('SELECT id FROM notifications WHERE id = ?').get(req.params.id);
+  if (!notif) return res.status(404).json({ error: 'Notification not found' });
+
+  db.prepare('UPDATE notifications SET read = 1 WHERE id = ?').run(req.params.id);
+  res.json({ message: 'Notification marked as read' });
+});
+
+/**
+ * PUT /api/v1/notifications/read-all — mark all notifications as read
+ */
+router.put('/notifications/read-all', authenticate, (req, res) => {
+  db.prepare('UPDATE notifications SET read = 1 WHERE read = 0').run();
+  res.json({ message: 'All notifications marked as read' });
+});
+
 // ─── Analytics ──────────────────────────────────────────────
 
 /**

@@ -36,9 +36,29 @@ app.use((req, _res, next) => {
 // Trust proxy for correct req.ip behind reverse proxy
 app.set('trust proxy', true);
 
+// ─── Version ────────────────────────────────────────────────
+import { readFileSync } from 'fs';
+const pkgJson = JSON.parse(readFileSync(path.join(__dirname, '..', 'package.json'), 'utf-8'));
+const APP_VERSION = pkgJson.version;
+
 // ─── API Routes ─────────────────────────────────────────────
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1', fleetRoutes);
+
+// ─── Status Endpoint ────────────────────────────────────────
+app.get('/api/v1/status', (_req, res) => {
+  const serverCount = db.prepare('SELECT COUNT(*) as count FROM servers').get();
+  const onlineCount = db.prepare("SELECT COUNT(*) as count FROM servers WHERE status = 'online'").get();
+  res.json({
+    name: 'CortexOS Management Server',
+    version: APP_VERSION,
+    uptime: process.uptime(),
+    servers: {
+      total: serverCount.count,
+      online: onlineCount.count
+    }
+  });
+});
 
 // ─── Dashboard Static Files ────────────────────────────────
 const dashboardDir = path.join(__dirname, '..', 'dashboard');
@@ -245,7 +265,7 @@ wss.on('connection', (browserWs, req, targetServer, user) => {
 server.listen(PORT, () => {
   console.log(`
 ╔═══════════════════════════════════════════════╗
-║       CortexOS Management Server v0.6.1       ║
+║       CortexOS Management Server v0.7.0       ║
 ╠═══════════════════════════════════════════════╣
 ║  Dashboard: http://localhost:${PORT}/dashboard/  ║
 ║  API:       http://localhost:${PORT}/api/v1/     ║

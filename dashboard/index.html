@@ -127,6 +127,65 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   border-radius: 6px; color: var(--text-dim); font-size: 0.75rem; cursor: pointer; transition: all 0.2s;
 }
 .btn-ghost:hover { border-color: var(--text-dim); color: var(--text); background: var(--surface-hover); }
+.topbar-version { font-size: 0.65rem; color: var(--text-muted); font-weight: 400; }
+
+/* ─── Notifications ──────────────── */
+.notif-wrapper { position: relative; }
+.notif-bell {
+  position: relative; background: transparent; border: 1px solid var(--border);
+  border-radius: 8px; width: 36px; height: 36px; display: flex; align-items: center;
+  justify-content: center; font-size: 1.1rem; color: var(--text-dim); cursor: pointer;
+  transition: all 0.2s;
+}
+.notif-bell:hover { border-color: var(--accent); color: var(--text); background: var(--surface-hover); }
+.notif-badge {
+  position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px;
+  background: var(--red); color: #fff; font-size: 0.6rem; font-weight: 700;
+  border-radius: 9px; display: flex; align-items: center; justify-content: center;
+  padding: 0 4px; border: 2px solid var(--surface); line-height: 1;
+}
+.notif-badge.hidden { display: none; }
+.notif-dropdown {
+  position: absolute; top: calc(100% + 8px); right: 0; width: 380px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4); z-index: 200; display: none;
+  max-height: 480px; overflow: hidden;
+}
+.notif-dropdown.open { display: block; }
+.notif-dropdown-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.75rem 1rem; border-bottom: 1px solid var(--border);
+}
+.notif-dropdown-header h3 { font-size: 0.85rem; font-weight: 600; }
+.notif-mark-all {
+  background: transparent; color: var(--accent-light); font-size: 0.7rem;
+  border: none; cursor: pointer; padding: 4px 8px; border-radius: 4px;
+}
+.notif-mark-all:hover { background: var(--accent-glow); }
+.notif-list { max-height: 380px; overflow-y: auto; }
+.notif-item {
+  display: flex; gap: 0.75rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border);
+  transition: background 0.15s; cursor: default;
+}
+.notif-item:hover { background: var(--surface-hover); }
+.notif-item.unread { background: rgba(108, 92, 231, 0.05); }
+.notif-item.unread::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  flex-shrink: 0; margin-top: 6px;
+}
+.notif-type-badge {
+  font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 2px 6px; border-radius: 4px; flex-shrink: 0; line-height: 1.4;
+}
+.notif-type-badge.info { background: var(--blue-bg); color: var(--blue); }
+.notif-type-badge.warning { background: var(--yellow-bg); color: var(--yellow); }
+.notif-type-badge.alert { background: var(--red-bg); color: var(--red); }
+.notif-type-badge.critical { background: var(--red-bg); color: var(--red); border: 1px solid var(--red); }
+.notif-content { flex: 1; min-width: 0; }
+.notif-server { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 2px; }
+.notif-message { font-size: 0.8rem; color: var(--text); line-height: 1.4; word-break: break-word; }
+.notif-time { font-size: 0.6rem; color: var(--text-muted); margin-top: 3px; }
+.notif-empty { padding: 2rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
 
 .app-body { display: flex; flex: 1; overflow: hidden; }
 
@@ -1213,9 +1272,24 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management</div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v0.7.0</span></div>
     </div>
     <div class="topbar-right">
+      <div class="notif-wrapper" id="notif-wrapper">
+        <button class="notif-bell" onclick="toggleNotifDropdown()" title="Notifications">
+          🔔
+          <span class="notif-badge hidden" id="notif-badge">0</span>
+        </button>
+        <div class="notif-dropdown" id="notif-dropdown">
+          <div class="notif-dropdown-header">
+            <h3>🔔 Notifications</h3>
+            <button class="notif-mark-all" onclick="markAllNotificationsRead()">Mark all read</button>
+          </div>
+          <div class="notif-list" id="notif-list">
+            <div class="notif-empty">No notifications</div>
+          </div>
+        </div>
+      </div>
       <span class="topbar-user" id="topbar-user"></span>
       <button class="btn-ghost" onclick="doLogout()">Logout</button>
     </div>
@@ -1669,6 +1743,7 @@ function doLogout() {
   localStorage.removeItem('cortex_mgmt_token');
   disconnectServer();
   if (fleetPollInterval) { clearInterval(fleetPollInterval); fleetPollInterval = null; }
+  if (window._notifInterval) { clearInterval(window._notifInterval); window._notifInterval = null; }
   $('app').classList.remove('active');
   $('login-page').style.display = 'flex';
   $('login-pass').value = '';
@@ -1715,6 +1790,113 @@ async function showApp() {
   fleetPollInterval = setInterval(() => {
     if (currentPage === 'fleet' && document.visibilityState === 'visible') renderFleet();
   }, 30000);
+
+  // Start notification polling
+  fetchNotifications();
+  if (window._notifInterval) clearInterval(window._notifInterval);
+  window._notifInterval = setInterval(() => {
+    if (document.visibilityState === 'visible') fetchNotifications();
+  }, 30000);
+}
+
+// ═══════════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════
+let notificationsCache = [];
+
+async function fetchNotifications() {
+  try {
+    const data = await api('/notifications?limit=50');
+    notificationsCache = data.notifications || [];
+    const unread = data.unread_count || 0;
+    const badge = $('notif-badge');
+    if (unread > 0) {
+      badge.textContent = unread > 99 ? '99+' : unread;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+    renderNotifList();
+  } catch (e) {
+    // Silently fail — notifications are non-critical
+  }
+}
+
+function renderNotifList() {
+  const list = $('notif-list');
+  if (!notificationsCache.length) {
+    list.innerHTML = '<div class="notif-empty">No notifications yet</div>';
+    return;
+  }
+  list.innerHTML = notificationsCache.slice(0, 30).map(n => {
+    const isUnread = !n.read;
+    const timeAgo = getTimeAgo(n.created_at);
+    return `<div class="notif-item ${isUnread ? 'unread' : ''}" onclick="markNotifRead('${n.id}')">
+      <div class="notif-content">
+        <div class="notif-server">${escHtml(n.server_name || 'Unknown server')} <span class="notif-type-badge ${n.type}">${n.type}</span></div>
+        <div class="notif-message">${escHtml(n.message || '')}</div>
+        <div class="notif-time">${timeAgo}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function getTimeAgo(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + (dateStr.includes('Z') ? '' : 'Z'));
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  return Math.floor(diff / 86400) + 'd ago';
+}
+
+function escHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function toggleNotifDropdown() {
+  const dd = $('notif-dropdown');
+  dd.classList.toggle('open');
+  if (dd.classList.contains('open')) fetchNotifications();
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  const wrapper = document.getElementById('notif-wrapper');
+  if (wrapper && !wrapper.contains(e.target)) {
+    $('notif-dropdown').classList.remove('open');
+  }
+});
+
+async function markNotifRead(id) {
+  try {
+    await api(`/notifications/${id}/read`, { method: 'PUT' });
+    // Update cache
+    const n = notificationsCache.find(x => x.id === id);
+    if (n) n.read = 1;
+    renderNotifList();
+    // Update badge
+    const unread = notificationsCache.filter(x => !x.read).length;
+    const badge = $('notif-badge');
+    if (unread > 0) {
+      badge.textContent = unread > 99 ? '99+' : unread;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  } catch {}
+}
+
+async function markAllNotificationsRead() {
+  try {
+    await api('/notifications/read-all', { method: 'PUT' });
+    notificationsCache.forEach(n => n.read = 1);
+    renderNotifList();
+    $('notif-badge').classList.add('hidden');
+  } catch {}
 }
 
 // ═══════════════════════════════════════════════════════════
