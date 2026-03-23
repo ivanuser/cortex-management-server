@@ -3226,7 +3226,13 @@ async function renderFleet() {
       }
     } catch {}
 
-    const servers = await api('/servers');
+    // Load groups and servers in parallel
+    const [servers] = await Promise.all([
+      api('/servers'),
+      loadGroups()
+    ]);
+    // Load server→groups mapping
+    await loadServerGroupsMap(servers);
     $('fleet-count').textContent = servers.length;
 
     if (servers.length === 0) {
@@ -3235,6 +3241,7 @@ async function renderFleet() {
           <h2>🏠 <span>Fleet</span> Overview</h2>
           <button class="btn-skills" onclick="navigate('add')">➕ Add Server</button>
         </div>
+        ${renderGroupFilterBar()}
         <div class="empty-state">
           <div class="icon">🖥️</div>
           <h3>No Servers Yet</h3>
@@ -3253,19 +3260,24 @@ async function renderFleet() {
       incidentBadge.style.display = 'none';
     }
 
+    // Filter servers by active group
+    const filteredServers = servers.filter(s => isServerInActiveGroup(s.id));
+
     let html = `
       <div class="section-header">
         <h2>🏠 <span>Fleet</span> Overview</h2>
         <div style="display:flex;align-items:center;gap:1rem">
-          <span style="color:var(--text-muted);font-size:0.78rem">${servers.length} server${servers.length !== 1 ? 's' : ''}</span>
+          <span style="color:var(--text-muted);font-size:0.78rem">${filteredServers.length}${activeGroupFilter ? '/' + servers.length : ''} server${filteredServers.length !== 1 ? 's' : ''}</span>
           <button class="btn-skills" onclick="showFleetCommandModal()">⚡ Fleet Command</button>
           <button class="btn-skills" onclick="triggerFleetUpdate()" id="btn-fleet-update" style="display:none">🔄 Update All</button>
           <button class="btn-skills" onclick="navigate('add')">➕ Add Server</button>
         </div>
       </div>
+      ${renderGroupFilterBar()}
+      ${groupsCache.length > 0 ? renderGroupSummaryCards() : ''}
       <div class="server-grid">`;
 
-    for (const s of servers) {
+    for (const s of filteredServers) {
       const cpuPct = s.cpu_percent ?? null;
       const memPct = (s.memory_used_mb && s.memory_total_mb) ? Math.round(s.memory_used_mb / s.memory_total_mb * 100) : null;
       const diskPct = s.disk_percent ?? null;
@@ -3276,6 +3288,7 @@ async function renderFleet() {
       const avatarHtml = s.avatar_data
         ? `<img class="fleet-card-avatar" src="${s.avatar_data}" alt="" />`
         : `<div class="fleet-card-avatar-placeholder">${s.agent_name ? esc(s.agent_name.charAt(0).toUpperCase()) : '⚡'}</div>`;
+      const groupBadgesHtml = renderGroupBadges(s.id);
       html += `<div class="server-card" style="${isSelected ? 'border-color:var(--accent);box-shadow:0 0 20px var(--accent-glow)' : ''}">
         ${unreadCount > 0 ? `<span class="fleet-unread-badge" data-fleet-unread-id="${s.id}">${unreadCount > 99 ? '99+' : unreadCount}</span>` : `<span class="fleet-unread-badge" data-fleet-unread-id="${s.id}" style="display:none">0</span>`}
         ${incidentCount > 0 ? `<span class="incident-badge critical">🚨 ${incidentCount} incident${incidentCount > 1 ? 's' : ''}</span>` : ''}
@@ -3288,6 +3301,7 @@ async function renderFleet() {
           <span class="server-card-ip">${esc(s.ip_address || s.hostname || '')}</span>
         </div>
         ${s.agent_name ? `<div class="server-card-agent">🤖 ${esc(s.agent_name)}${s.skills_count ? `<span class="skills-badge">🧩 ${s.skills_count} skills</span>` : ''}</div>` : '<div class="server-card-agent" style="opacity:0.3">No agent configured</div>'}
+        ${groupBadgesHtml}
         ${s.agent_version ? `<div style="margin-bottom:0.5rem"><span class="version-badge ${(fleetLatestVersion && s.agent_version !== fleetLatestVersion) ? 'outdated' : 'current'}">v${esc(s.agent_version)}</span>${(fleetLatestVersion && s.agent_version !== fleetLatestVersion) ? '<span class="version-badge outdated" style="margin-left:0.3rem">⬆ Update Available</span>' : ''}</div>` : ''}
         <div class="stat-bars">
           ${cpuPct !== null ? `<div class="stat-row">
@@ -3310,6 +3324,7 @@ async function renderFleet() {
         <div class="server-card-footer">
           <span class="time">Last seen: ${timeAgo(s.last_seen)}</span>
           <div style="display:flex;gap:0.5rem">
+            <button class="btn-ghost" style="font-size:0.7rem;padding:0.3rem 0.6rem" onclick="event.stopPropagation();showAssignGroupsModal('${s.id}','${esc(s.name)}')" title="Assign to groups">📁</button>
             <button class="btn-select" onclick="event.stopPropagation();selectServer('${s.id}')">${isSelected ? '✓ Selected' : 'Select'}</button>
             <button class="btn-ghost" style="font-size:0.7rem;padding:0.3rem 0.6rem" onclick="event.stopPropagation();removeServer('${s.id}','${esc(s.name)}')" title="Remove">🗑️</button>
           </div>
@@ -3639,7 +3654,21 @@ async function renderAdd() {
       </div>
       <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="manualAdd()">Add Server</button>
     </div>
-    ${tokensHtml}`;
+    ${tokensHtml}
+
+    <div class="group-section" style="margin-top:1.5rem;max-width:600px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3>📁 Server Groups</h3>
+        <button class="btn-skills primary" style="font-size:0.75rem" onclick="showCreateGroupModal()">➕ New Group</button>
+      </div>
+      <p style="color:var(--text-dim);font-size:0.8rem;margin-bottom:1rem">
+        Organize servers by project, team, or environment. Create groups here and assign servers from the fleet page.
+      </p>
+      <div id="add-page-groups-list"></div>
+    </div>`;
+
+  // Render groups list on add page
+  renderAddPageGroupsList();
 
   // Load templates into dropdown
   try {
@@ -4629,6 +4658,11 @@ async function showEditServerModal(serverId) {
   let tags = [];
   try { tags = JSON.parse(server.tags || '[]'); } catch {}
 
+  // Load server's current groups
+  let srvGroups = [];
+  try { srvGroups = await api(`/servers/${serverId}/groups`); } catch {}
+  const memberGroupIds = new Set(srvGroups.map(g => g.id));
+
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
@@ -4665,6 +4699,18 @@ async function showEditServerModal(serverId) {
         <label>Tags (comma-separated)</label>
         <input type="text" id="edit-srv-tags" value="${esc(tags.join(', '))}" placeholder="production, web, us-east">
       </div>
+      ${groupsCache.length > 0 ? `<div class="form-group">
+        <label>Groups</label>
+        <div class="group-assign-list">
+          ${groupsCache.map(g => `
+            <label class="group-assign-item">
+              <input type="checkbox" class="edit-srv-grp-cb" value="${g.id}" ${memberGroupIds.has(g.id) ? 'checked' : ''}>
+              <span style="color:${esc(g.color)}">${esc(g.icon)}</span>
+              ${esc(g.name)}
+            </label>
+          `).join('')}
+        </div>
+      </div>` : ''}
       <div class="modal-actions">
         <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
         <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="saveServerEdit('${serverId}')">Save Changes</button>
@@ -4691,6 +4737,25 @@ async function saveServerEdit(serverId) {
       method: 'PUT',
       body: JSON.stringify({ name, agent_name, hostname, ip_address, gateway_url, gateway_token, tags })
     });
+    // Handle group assignments if checkboxes exist
+    const grpCheckboxes = document.querySelectorAll('.edit-srv-grp-cb');
+    if (grpCheckboxes.length > 0) {
+      const desiredGroups = new Set(Array.from(document.querySelectorAll('.edit-srv-grp-cb:checked')).map(cb => cb.value));
+      let currentGroups = [];
+      try { currentGroups = await api(`/servers/${serverId}/groups`); } catch {}
+      const currentSet = new Set(currentGroups.map(g => g.id));
+      for (const gid of desiredGroups) {
+        if (!currentSet.has(gid)) {
+          try { await api(`/groups/${gid}/servers`, { method: 'POST', body: JSON.stringify({ server_id: serverId }) }); } catch {}
+        }
+      }
+      for (const gid of currentSet) {
+        if (!desiredGroups.has(gid)) {
+          try { await api(`/groups/${gid}/servers/${serverId}`, { method: 'DELETE' }); } catch {}
+        }
+      }
+    }
+
     toast('Server updated successfully');
     document.querySelector('.modal-overlay')?.remove();
 
@@ -4704,6 +4769,7 @@ async function saveServerEdit(serverId) {
       aiName = agent_name || 'CortexOS';
     }
 
+    await loadGroups();
     if (currentPage === 'health') renderHealth();
     else if (currentPage === 'fleet') renderFleet();
   } catch (e) { toast(e.message, 'error'); }
@@ -6569,6 +6635,33 @@ async function showAssignGroupsModal(serverId, serverName) {
       </div>
     </div>`;
   document.body.appendChild(overlay);
+}
+
+async function renderAddPageGroupsList() {
+  await loadGroups();
+  const el = document.getElementById('add-page-groups-list');
+  if (!el) return;
+  if (groupsCache.length === 0) {
+    el.innerHTML = '<p class="no-data">No groups yet. Create your first group above.</p>';
+    return;
+  }
+  let html = '';
+  for (const g of groupsCache) {
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.6rem 0.8rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:0.4rem">
+      <div style="display:flex;align-items:center;gap:0.6rem">
+        <span style="font-size:1.1rem">${esc(g.icon)}</span>
+        <div>
+          <div style="font-weight:600;font-size:0.85rem">${esc(g.name)}</div>
+          <div style="font-size:0.7rem;color:var(--text-dim)">${esc(g.description || 'No description')} · ${g.member_count} server${g.member_count !== 1 ? 's' : ''}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:0.4rem">
+        <span style="width:12px;height:12px;border-radius:50%;background:${esc(g.color)};display:inline-block"></span>
+        <button class="btn-ghost" style="font-size:0.7rem" onclick="showEditGroupModal('${g.id}')">✏️ Edit</button>
+      </div>
+    </div>`;
+  }
+  el.innerHTML = html;
 }
 
 async function saveServerGroupAssignment(serverId) {
