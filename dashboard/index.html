@@ -2296,6 +2296,28 @@ async function loadChatHistory() {
         el.innerHTML = msgHead(m.role) + `<div class="msg-body">${fmtText(m.content || m.text || '')}</div>`;
         scroll.appendChild(el);
       });
+    } else {
+      // DB empty — check localStorage and migrate
+      const key = chatStorageKey();
+      if (key) {
+        const local = JSON.parse(localStorage.getItem(key) || '[]');
+        if (local.length > 0) {
+          // Upload local messages to DB
+          for (const m of local) {
+            api('/servers/' + selectedServer.id + '/chat', {
+              method: 'POST',
+              body: JSON.stringify({ role: m.role, content: m.text || m.content || '' })
+            }).catch(() => {});
+          }
+          // Render them
+          local.forEach(m => {
+            const el = document.createElement('div');
+            el.className = 'msg ' + m.role;
+            el.innerHTML = msgHead(m.role) + `<div class="msg-body">${fmtText(m.text || '')}</div>`;
+            scroll.appendChild(el);
+          });
+        }
+      }
     }
   } catch {
     // Fallback to localStorage
