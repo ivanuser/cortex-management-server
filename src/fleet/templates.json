@@ -63,5 +63,18 @@
       "Install Grafana and set up default dashboards",
       "Configure monitoring exporters for system metrics"
     ]
+  },
+  {
+    "id": "security",
+    "name": "Security / SIEM Server",
+    "description": "Vulnerability scanning, log analysis, and security monitoring",
+    "icon": "🔐",
+    "skills": ["security-hardening", "firewall-manager", "monitoring", "docker-manager", "network-manager"],
+    "extendedSkills": ["openvas", "splunk", "nessus", "wazuh"],
+    "setupCommands": [
+      "Run a full security audit of this server",
+      "Check if Docker is installed for running security tools",
+      "Configure the firewall to allow OpenVAS (9392) and Splunk (8000, 8089, 9997) ports"
+    ]
   }
 ]
