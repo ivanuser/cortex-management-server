@@ -1366,6 +1366,9 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
         <div class="nav-sub-item" data-page="cron" onclick="navigate('cron')">
           <span class="icon">🕐</span> Cron
         </div>
+        <div class="nav-sub-item" data-page="compliance" onclick="navigate('compliance')">
+          <span class="icon">🛡️</span> Compliance
+        </div>
       </div>
 
       <div class="sidebar-section">
@@ -1588,6 +1591,13 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
           <div class="mgmt-body" id="cron-content">
             <div class="mgmt-loading">Loading cron jobs</div>
           </div>
+        </div>
+      </div>
+
+      <!-- Compliance Page -->
+      <div class="page" id="page-compliance">
+        <div class="page-scroll" id="compliance-content">
+          <div class="mgmt-loading">Loading compliance data</div>
         </div>
       </div>
 
@@ -1904,7 +1914,7 @@ async function markAllNotificationsRead() {
 // ═══════════════════════════════════════════════════════════
 function navigate(page) {
   // Server pages require a selected server
-  if (['chat', 'skills', 'terminal', 'health', 'files', 'services', 'docker', 'logs', 'network', 'packages', 'cron'].includes(page) && !selectedServer) {
+  if (['chat', 'skills', 'terminal', 'health', 'files', 'services', 'docker', 'logs', 'network', 'packages', 'cron', 'compliance'].includes(page) && !selectedServer) {
     toast('Select a server first', 'error');
     page = 'fleet';
   }
@@ -1932,7 +1942,7 @@ function navigate(page) {
     fleet: renderFleet, add: renderAdd, chat: renderChat, skills: renderSkills,
     terminal: renderTerminal, health: renderHealth, files: renderFiles,
     services: renderServices, docker: renderDocker, logs: renderLogs,
-    network: renderNetwork, packages: renderPackages, cron: renderCron, users: renderUsers,
+    network: renderNetwork, packages: renderPackages, cron: renderCron, compliance: renderCompliance, users: renderUsers,
     settings: renderSettings, audit: renderAudit, schedules: renderSchedules,
     'incidents-page': renderIncidentsPage, analytics: renderAnalytics
   };
@@ -5590,6 +5600,295 @@ function addSystemCronEntry() {
     toast('Cron entry added');
     setTimeout(loadCron, 2000);
   });
+}
+
+// ═══════════════════════════════════════════════════════════
+// COMPLIANCE TAB (NIST 800-53 + CMMC)
+// ═══════════════════════════════════════════════════════════
+let complianceData = null;
+let complianceFramework = 'nist'; // 'nist' | 'cmmc1' | 'cmmc2'
+let complianceSortCol = 'severity';
+let complianceSortAsc = false;
+let complianceFilterStatus = 'all';
+let complianceFilterFamily = 'all';
+let complianceFilterSeverity = 'all';
+
+function renderCompliance() {
+  if (!selectedServer) return;
+  loadCompliance();
+}
+
+async function loadCompliance() {
+  const el = $('compliance-content');
+  el.innerHTML = '<div class="mgmt-loading">Loading compliance data</div>';
+  try {
+    const data = await api('/servers/' + selectedServer.id + '/proxy/compliance.json');
+    if (data.error && !data.summary) throw new Error(data.error);
+    complianceData = data;
+    renderComplianceDashboard();
+  } catch (err) {
+    el.innerHTML = `<div style="padding:2rem;text-align:center">
+      <div style="font-size:2.5rem;margin-bottom:1rem">🛡️</div>
+      <h3 style="color:var(--text);margin-bottom:0.5rem">No Compliance Data</h3>
+      <p style="color:var(--text-dim);margin-bottom:1.5rem">Run a compliance scan to check this server against NIST 800-53 and CMMC controls.</p>
+      <button class="btn-primary" style="width:auto;padding:0.7rem 2rem" onclick="runComplianceScan()">🔍 Run Compliance Scan</button>
+      <p style="color:var(--text-muted);font-size:0.72rem;margin-top:1rem">Error: ${esc(err.message)}</p>
+    </div>`;
+  }
+}
+
+function runComplianceScan() {
+  qcmd('Run sudo cortexos-compliance-scan && cat /var/lib/cortexos/dashboard/compliance.json');
+  navigate('chat');
+  toast('Compliance scan started — check chat for results');
+}
+
+function renderComplianceDashboard() {
+  if (!complianceData) return;
+  const d = complianceData;
+  const s = d.summary;
+  const el = $('compliance-content');
+
+  const scoreColor = s.score_percent >= 80 ? 'var(--green)' : s.score_percent >= 60 ? 'var(--yellow)' : 'var(--red)';
+  const scanTime = d.scan_time ? timeAgo(d.scan_time) : 'Unknown';
+
+  let html = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem">
+      <div style="display:flex;align-items:center;gap:1.5rem">
+        <div style="position:relative;width:100px;height:100px">
+          <svg viewBox="0 0 36 36" style="width:100%;height:100%;transform:rotate(-90deg)">
+            <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--border)" stroke-width="2.5"/>
+            <circle cx="18" cy="18" r="15.9" fill="none" stroke="${scoreColor}" stroke-width="2.5"
+              stroke-dasharray="${s.score_percent} ${100 - s.score_percent}" stroke-linecap="round"
+              style="transition:stroke-dasharray 0.8s ease"/>
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+            <span style="font-size:1.5rem;font-weight:700;color:${scoreColor}">${s.score_percent}%</span>
+            <span style="font-size:0.6rem;color:var(--text-dim)">Score</span>
+          </div>
+        </div>
+        <div>
+          <h2 style="margin-bottom:0.25rem">🛡️ <span style="color:var(--accent-light)">Compliance</span></h2>
+          <div style="font-size:0.78rem;color:var(--text-dim)">
+            ${s.pass} pass · ${s.fail} fail · ${s.partial} partial · ${s.na} n/a
+            <span style="margin-left:0.5rem;opacity:0.6">Scanned ${scanTime}</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+        <select style="font-size:0.78rem;padding:6px 10px" onchange="complianceFramework=this.value;renderComplianceDashboard()">
+          <option value="nist" ${complianceFramework==='nist'?'selected':''}>NIST 800-53</option>
+          <option value="cmmc1" ${complianceFramework==='cmmc1'?'selected':''}>CMMC Level 1</option>
+          <option value="cmmc2" ${complianceFramework==='cmmc2'?'selected':''}>CMMC Level 2</option>
+        </select>
+        <button class="btn-skills" onclick="loadCompliance()">↻ Refresh</button>
+        <button class="btn-skills primary" onclick="runComplianceScan()">🔍 Run Scan</button>
+      </div>
+    </div>`;
+
+  // CMMC cards (if CMMC selected)
+  if (complianceFramework === 'cmmc1' || complianceFramework === 'cmmc2') {
+    const c = d.cmmc || {};
+    const l1 = c.level1 || {total:0,pass:0,score:0};
+    const l2 = c.level2 || {total:0,pass:0,score:0};
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;margin-bottom:1.5rem">`;
+    html += complianceLevelCard('Level 1 — Basic Cyber Hygiene', l1.pass, l1.total, l1.score);
+    if (complianceFramework === 'cmmc2') {
+      html += complianceLevelCard('Level 2 — Advanced', l2.pass, l2.total, l2.score);
+    }
+    html += `</div>`;
+  }
+
+  // Family breakdown
+  const families = d.families || {};
+  const familyNames = {AC:'Access Control',AU:'Audit & Accountability',CM:'Configuration Mgmt',IA:'Identification & Auth',SC:'System & Comms Protection',SI:'System & Info Integrity'};
+  html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.75rem;margin-bottom:1.5rem">`;
+  for (const [fam, info] of Object.entries(families)) {
+    const pct = info.total > 0 ? Math.round(info.pass / info.total * 100) : 0;
+    const color = pct >= 80 ? 'var(--green)' : pct >= 60 ? 'var(--yellow)' : 'var(--red)';
+    const bgColor = pct >= 80 ? 'var(--green-bg)' : pct >= 60 ? 'var(--yellow-bg)' : 'var(--red-bg)';
+    html += `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;cursor:pointer" onclick="complianceFilterFamily='${fam}';renderComplianceDashboard()">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+        <span style="font-weight:600;font-size:0.82rem">${fam}</span>
+        <span style="font-size:0.72rem;color:${color};font-weight:600">${pct}%</span>
+      </div>
+      <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:0.4rem">${familyNames[fam] || fam}</div>
+      <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:0.4rem">${info.pass} pass · ${info.fail} fail · ${info.total} total</div>
+      <div style="background:var(--bg);border-radius:4px;height:6px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width 0.5s"></div>
+      </div>
+    </div>`;
+  }
+  html += `</div>`;
+
+  // Filters
+  html += `<div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center">
+    <span style="font-size:0.72rem;color:var(--text-dim)">Filter:</span>
+    <select style="font-size:0.72rem;padding:4px 8px" onchange="complianceFilterStatus=this.value;renderComplianceDashboard()">
+      <option value="all" ${complianceFilterStatus==='all'?'selected':''}>All Status</option>
+      <option value="pass" ${complianceFilterStatus==='pass'?'selected':''}>✅ Pass</option>
+      <option value="fail" ${complianceFilterStatus==='fail'?'selected':''}>❌ Fail</option>
+      <option value="partial" ${complianceFilterStatus==='partial'?'selected':''}>⚠️ Partial</option>
+      <option value="na" ${complianceFilterStatus==='na'?'selected':''}>➖ N/A</option>
+    </select>
+    <select style="font-size:0.72rem;padding:4px 8px" onchange="complianceFilterFamily=this.value;renderComplianceDashboard()">
+      <option value="all" ${complianceFilterFamily==='all'?'selected':''}>All Families</option>
+      ${Object.keys(families).map(f => `<option value="${f}" ${complianceFilterFamily===f?'selected':''}>${f}</option>`).join('')}
+    </select>
+    <select style="font-size:0.72rem;padding:4px 8px" onchange="complianceFilterSeverity=this.value;renderComplianceDashboard()">
+      <option value="all" ${complianceFilterSeverity==='all'?'selected':''}>All Severity</option>
+      <option value="high" ${complianceFilterSeverity==='high'?'selected':''}>🔴 High</option>
+      <option value="medium" ${complianceFilterSeverity==='medium'?'selected':''}>🟡 Medium</option>
+      <option value="low" ${complianceFilterSeverity==='low'?'selected':''}>🟢 Low</option>
+    </select>
+    ${complianceFilterFamily !== 'all' || complianceFilterStatus !== 'all' || complianceFilterSeverity !== 'all' ? `<button class="btn-skills" style="font-size:0.7rem;padding:3px 8px" onclick="complianceFilterStatus='all';complianceFilterFamily='all';complianceFilterSeverity='all';renderComplianceDashboard()">Clear Filters</button>` : ''}
+  </div>`;
+
+  // Findings table
+  let controls = [...(d.controls || [])];
+
+  // Apply filters
+  if (complianceFilterStatus !== 'all') controls = controls.filter(c => c.status === complianceFilterStatus);
+  if (complianceFilterFamily !== 'all') controls = controls.filter(c => c.family === complianceFilterFamily);
+  if (complianceFilterSeverity !== 'all') controls = controls.filter(c => c.severity === complianceFilterSeverity);
+
+  // CMMC framework filter
+  const cmmc_l1_ids = new Set(["AC-2","AC-3","AC-7","AC-8","AC-17","AU-8","CM-8","IA-2","IA-5","IA-6","SC-7","SI-2","SI-3","SI-5"]);
+  if (complianceFramework === 'cmmc1') controls = controls.filter(c => cmmc_l1_ids.has(c.id));
+
+  // Sort
+  const sevOrder = {high:0,medium:1,low:2};
+  const statusOrder = {fail:0,partial:1,pass:2,na:3};
+  controls.sort((a, b) => {
+    let va, vb;
+    if (complianceSortCol === 'severity') { va = sevOrder[a.severity]||9; vb = sevOrder[b.severity]||9; }
+    else if (complianceSortCol === 'status') { va = statusOrder[a.status]||9; vb = statusOrder[b.status]||9; }
+    else if (complianceSortCol === 'family') { va = a.family; vb = b.family; }
+    else if (complianceSortCol === 'id') { va = a.id; vb = b.id; }
+    else { va = a[complianceSortCol]; vb = b[complianceSortCol]; }
+    if (va < vb) return complianceSortAsc ? -1 : 1;
+    if (va > vb) return complianceSortAsc ? 1 : -1;
+    return 0;
+  });
+
+  html += `<div class="table-wrap"><table class="data-table">
+    <thead><tr>
+      <th style="cursor:pointer" onclick="complianceSortBy('id')">Control ${complianceSortCol==='id'?(complianceSortAsc?'↑':'↓'):''}</th>
+      <th>Title</th>
+      <th style="cursor:pointer" onclick="complianceSortBy('status')">Status ${complianceSortCol==='status'?(complianceSortAsc?'↑':'↓'):''}</th>
+      <th style="cursor:pointer" onclick="complianceSortBy('severity')">Severity ${complianceSortCol==='severity'?(complianceSortAsc?'↑':'↓'):''}</th>
+      <th>Finding</th>
+      <th>CMMC</th>
+    </tr></thead><tbody>`;
+
+  for (const c of controls) {
+    const statusBadge = c.status === 'pass' ? '<span style="color:var(--green);font-weight:600">✅ Pass</span>'
+      : c.status === 'fail' ? '<span style="color:var(--red);font-weight:600">❌ Fail</span>'
+      : c.status === 'partial' ? '<span style="color:var(--yellow);font-weight:600">⚠️ Partial</span>'
+      : '<span style="color:var(--text-muted)">➖ N/A</span>';
+    const sevBadge = c.severity === 'high' ? '<span style="background:var(--red-bg);color:var(--red);padding:2px 8px;border-radius:4px;font-size:0.68rem">High</span>'
+      : c.severity === 'medium' ? '<span style="background:var(--yellow-bg);color:var(--yellow);padding:2px 8px;border-radius:4px;font-size:0.68rem">Medium</span>'
+      : '<span style="background:var(--green-bg);color:var(--green);padding:2px 8px;border-radius:4px;font-size:0.68rem">Low</span>';
+
+    html += `<tr style="cursor:pointer" onclick="toggleComplianceDetail(this)">
+      <td style="font-weight:600;font-family:'JetBrains Mono',monospace;font-size:0.75rem">${esc(c.id)}</td>
+      <td>${esc(c.title)}</td>
+      <td>${statusBadge}</td>
+      <td>${sevBadge}</td>
+      <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.finding)}</td>
+      <td style="text-align:center">L${c.cmmc_level || '?'}</td>
+    </tr>
+    <tr class="compliance-detail" style="display:none">
+      <td colspan="6" style="background:var(--bg);padding:1rem">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;font-size:0.78rem">
+          <div>
+            <div style="color:var(--text-dim);font-size:0.68rem;text-transform:uppercase;margin-bottom:0.3rem">Finding</div>
+            <div>${esc(c.finding)}</div>
+          </div>
+          <div>
+            <div style="color:var(--text-dim);font-size:0.68rem;text-transform:uppercase;margin-bottom:0.3rem">Evidence</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:0.72rem">${esc(c.evidence || 'N/A')}</div>
+          </div>
+          ${c.remediation ? `<div style="grid-column:1/-1">
+            <div style="color:var(--text-dim);font-size:0.68rem;text-transform:uppercase;margin-bottom:0.3rem">Remediation</div>
+            <div style="display:flex;align-items:center;gap:0.75rem">
+              <code style="flex:1;font-size:0.72rem;background:var(--surface);padding:0.5rem;border-radius:4px;display:block">${esc(c.remediation)}</code>
+              <button class="btn-skills" style="font-size:0.7rem;padding:4px 10px;white-space:nowrap" onclick="event.stopPropagation();complianceFix('${esc(c.id)}','${esc(c.remediation).replace(/'/g, "\\'")}')">🔧 Fix</button>
+            </div>
+          </div>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }
+  html += `</tbody></table></div>`;
+
+  // Auto-remediate section
+  const fixable = (d.controls || []).filter(c => c.status !== 'pass' && c.remediation);
+  if (fixable.length > 0) {
+    html += `<div style="margin-top:1.5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3 style="font-size:0.9rem">🔧 Auto-Remediate (${fixable.length} fixable)</h3>
+        <button class="btn-skills primary" style="font-size:0.72rem" onclick="complianceFixAll()">Fix All</button>
+      </div>
+      <div style="display:grid;gap:0.5rem;max-height:300px;overflow-y:auto">`;
+    for (const c of fixable) {
+      const sevColor = c.severity === 'high' ? 'var(--red)' : c.severity === 'medium' ? 'var(--yellow)' : 'var(--green)';
+      html += `<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0.75rem;background:var(--bg);border-radius:6px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;font-weight:600;min-width:45px">${esc(c.id)}</span>
+        <span style="font-size:0.72rem;color:${sevColor}">●</span>
+        <span style="flex:1;font-size:0.75rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.finding)}</span>
+        <button class="btn-skills" style="font-size:0.68rem;padding:3px 8px" onclick="complianceFix('${esc(c.id)}','${esc(c.remediation).replace(/'/g, "\\'")}')">Fix</button>
+      </div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+function complianceLevelCard(title, pass, total, score) {
+  const color = score >= 80 ? 'var(--green)' : score >= 60 ? 'var(--yellow)' : 'var(--red)';
+  return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+      <span style="font-weight:600;font-size:0.85rem">${title}</span>
+      <span style="font-size:1.1rem;font-weight:700;color:${color}">${score}%</span>
+    </div>
+    <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.5rem">${pass}/${total} practices passing</div>
+    <div style="background:var(--bg);border-radius:4px;height:8px;overflow:hidden">
+      <div style="height:100%;width:${score}%;background:${color};border-radius:4px;transition:width 0.5s"></div>
+    </div>
+  </div>`;
+}
+
+function complianceSortBy(col) {
+  if (complianceSortCol === col) complianceSortAsc = !complianceSortAsc;
+  else { complianceSortCol = col; complianceSortAsc = false; }
+  renderComplianceDashboard();
+}
+
+function toggleComplianceDetail(row) {
+  const detail = row.nextElementSibling;
+  if (detail && detail.classList.contains('compliance-detail')) {
+    detail.style.display = detail.style.display === 'none' ? '' : 'none';
+  }
+}
+
+function complianceFix(controlId, remediation) {
+  if (!confirm(`Apply remediation for ${controlId}?\n\n${remediation}`)) return;
+  qcmd(`Run ${remediation}`);
+  navigate('chat');
+  toast(`Applying fix for ${controlId}…`);
+}
+
+function complianceFixAll() {
+  if (!complianceData) return;
+  const fixable = complianceData.controls.filter(c => c.status !== 'pass' && c.remediation);
+  if (fixable.length === 0) { toast('Nothing to fix!', 'error'); return; }
+  if (!confirm(`Apply ${fixable.length} remediation commands?\n\nThis will run each fix sequentially through chat.`)) return;
+  const cmds = fixable.map(c => c.remediation).join(' && ');
+  qcmd(`Run ${cmds}`);
+  navigate('chat');
+  toast(`Applying ${fixable.length} fixes…`);
 }
 
 // ═══════════════════════════════════════════════════════════
