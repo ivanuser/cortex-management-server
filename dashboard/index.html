@@ -1072,6 +1072,102 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 .cron-dot.enabled { background: var(--green); box-shadow: 0 0 4px var(--green); }
 .cron-dot.disabled { background: var(--text-muted); }
 
+/* ─── Server Groups ─────────────────── */
+.group-filter-bar {
+  display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.25rem;
+  flex-wrap: wrap; padding: 0.75rem 0;
+}
+.group-filter-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.4rem 0.85rem; border-radius: 20px; font-size: 0.75rem;
+  font-weight: 600; cursor: pointer; transition: all 0.2s;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-dim);
+}
+.group-filter-btn:hover { border-color: var(--border-glow); color: var(--text); background: var(--surface-hover); }
+.group-filter-btn.active { border-color: var(--accent); color: var(--accent-light); background: var(--accent-glow); }
+.group-filter-btn .group-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.group-filter-btn .group-count {
+  font-size: 0.65rem; opacity: 0.7; margin-left: 0.15rem;
+}
+.group-add-btn {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.4rem 0.75rem; border-radius: 20px; font-size: 0.75rem;
+  font-weight: 600; cursor: pointer; transition: all 0.2s;
+  border: 1px dashed var(--border); background: transparent; color: var(--text-muted);
+}
+.group-add-btn:hover { border-color: var(--accent); color: var(--accent-light); }
+
+.group-summary-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px; margin-bottom: 1.25rem;
+}
+.group-summary-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1rem 1.1rem;
+  cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;
+}
+.group-summary-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  transition: opacity 0.2s;
+}
+.group-summary-card:hover {
+  border-color: var(--border-glow); transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.group-summary-card.active { border-color: var(--accent); box-shadow: 0 0 16px var(--accent-glow); }
+.group-summary-header {
+  display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.6rem;
+}
+.group-summary-icon { font-size: 1.3rem; }
+.group-summary-name { font-size: 0.88rem; font-weight: 600; flex: 1; }
+.group-summary-stats {
+  display: flex; gap: 0.75rem; font-size: 0.7rem; color: var(--text-dim);
+}
+.group-summary-stats .stat { display: flex; align-items: center; gap: 0.25rem; }
+.group-summary-stats .stat.online { color: var(--green); }
+.group-summary-stats .stat.offline { color: var(--red); }
+.group-summary-mini-bars {
+  display: flex; gap: 0.5rem; margin-top: 0.5rem; padding-top: 0.5rem;
+  border-top: 1px solid var(--border); font-size: 0.65rem; color: var(--text-muted);
+}
+.group-summary-mini-bars .mini-stat { display: flex; align-items: center; gap: 0.3rem; }
+
+.group-badge {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0.1rem 0.5rem; border-radius: 12px; font-size: 0.6rem;
+  font-weight: 600; margin-right: 0.25rem; margin-bottom: 0.2rem;
+  border: 1px solid; white-space: nowrap;
+}
+
+.group-section {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1.25rem; margin-top: 1.5rem;
+}
+.group-section h3 { margin-bottom: 1rem; font-size: 0.95rem; }
+.group-color-swatches {
+  display: flex; gap: 0.5rem; flex-wrap: wrap;
+}
+.group-color-swatch {
+  width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent; transition: all 0.15s;
+}
+.group-color-swatch:hover { transform: scale(1.15); }
+.group-color-swatch.selected { border-color: var(--text); box-shadow: 0 0 8px rgba(255,255,255,0.2); }
+
+.group-assign-list {
+  display: flex; flex-direction: column; gap: 0.4rem;
+  max-height: 200px; overflow-y: auto; margin-top: 0.5rem;
+}
+.group-assign-item {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.4rem 0.6rem; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; font-size: 0.78rem; cursor: pointer; transition: all 0.15s;
+}
+.group-assign-item:hover { border-color: var(--accent); }
+.group-assign-item input { width: auto; }
+
 /* ─── Responsive ────────────────────── */
 @media (max-width: 768px) {
   .sidebar { display: none; }
@@ -1761,6 +1857,9 @@ let aiName = 'CortexOS';
 let wsOneTimeHandlers = [];
 let cmdCallbacks = {};
 let fleetLatestVersion = null;
+let groupsCache = [];
+let activeGroupFilter = null; // null = 'All Servers'
+let serverGroupsMap = {}; // { serverId: [{ id, name, icon, color }, ...] }
 
 const API = '/api/v1';
 const $ = id => document.getElementById(id);
@@ -2318,6 +2417,13 @@ function handleWsMessage(d) {
       if (m?.content) {
         const t = extractTxt(m.content);
         if (t) { wsStreaming = t; updateStream(wsStreaming); }
+        // Show tool activity in typing indicator
+        if (Array.isArray(m.content)) {
+          const toolUse = m.content.find(b => b.type === 'tool_use');
+          if (toolUse) {
+            $('typing-el').textContent = '🔧 ' + aiName + ' running: ' + (toolUse.name || 'tool');
+          }
+        }
       }
     } else if (['finished', 'final', 'complete', 'done'].includes(st)) {
       $('typing-el').classList.remove('active');
@@ -2358,7 +2464,8 @@ function extractTxt(c) {
     return c.map(b => {
       if (typeof b === 'string') return b;
       if (b.type === 'text' && b.text) return b.text;
-      if (b.type === 'tool_use') return '';
+      if (b.type === 'tool_use') return '🔧 Running: ' + (b.name || 'tool') + (b.input?.command ? ' — `' + b.input.command.substring(0, 80) + '`' : '') + '\n';
+      if (b.type === 'tool_result') return '';
       if (b.content) return extractTxt(b.content);
       return '';
     }).filter(Boolean).join('\n');
@@ -6153,6 +6260,341 @@ function complianceFixAll() {
   qcmd(`Run ${cmds}`);
   navigate('chat');
   toast(`Applying ${fixable.length} fixes…`);
+}
+
+// ═══════════════════════════════════════════════════════════
+// SERVER GROUPS
+// ═══════════════════════════════════════════════════════════
+async function loadGroups() {
+  try {
+    groupsCache = await api('/groups');
+  } catch { groupsCache = []; }
+}
+
+async function loadServerGroupsMap(servers) {
+  // Batch load: for each server, fetch its groups
+  serverGroupsMap = {};
+  try {
+    for (const s of servers) {
+      const groups = await api(`/servers/${s.id}/groups`);
+      serverGroupsMap[s.id] = groups;
+    }
+  } catch {}
+}
+
+function renderGroupFilterBar() {
+  let html = '<div class="group-filter-bar" id="group-filter-bar">';
+  html += `<button class="group-filter-btn ${activeGroupFilter === null ? 'active' : ''}" onclick="setGroupFilter(null)">
+    All Servers
+  </button>`;
+  for (const g of groupsCache) {
+    const isActive = activeGroupFilter === g.id;
+    html += `<button class="group-filter-btn ${isActive ? 'active' : ''}" onclick="setGroupFilter('${g.id}')">
+      <span class="group-dot" style="background:${esc(g.color)}"></span>
+      ${esc(g.icon)} ${esc(g.name)}
+      <span class="group-count">(${g.member_count})</span>
+    </button>`;
+  }
+  html += `<button class="group-add-btn" onclick="showCreateGroupModal()">➕ New Group</button>`;
+  html += '</div>';
+  return html;
+}
+
+function renderGroupSummaryCards() {
+  if (groupsCache.length === 0) return '';
+  let html = '<div class="group-summary-cards">';
+  for (const g of groupsCache) {
+    const s = g.stats || {};
+    const isActive = activeGroupFilter === g.id;
+    html += `<div class="group-summary-card ${isActive ? 'active' : ''}" onclick="setGroupFilter('${g.id}')" style="--group-color:${esc(g.color)}">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${esc(g.color)};border-radius:var(--radius) var(--radius) 0 0"></div>
+      <div class="group-summary-header">
+        <span class="group-summary-icon">${esc(g.icon)}</span>
+        <span class="group-summary-name">${esc(g.name)}</span>
+        <button class="btn-ghost" style="font-size:0.65rem;padding:2px 6px" onclick="event.stopPropagation();showEditGroupModal('${g.id}')" title="Edit group">✏️</button>
+      </div>
+      <div class="group-summary-stats">
+        <span class="stat">${s.total || 0} server${s.total !== 1 ? 's' : ''}</span>
+        <span class="stat online">● ${s.online || 0} online</span>
+        ${s.offline > 0 ? `<span class="stat offline">● ${s.offline} offline</span>` : ''}
+      </div>
+      ${s.avg_cpu !== null || s.avg_memory_pct !== null ? `<div class="group-summary-mini-bars">
+        ${s.avg_cpu !== null ? `<span class="mini-stat">CPU: ${s.avg_cpu}%</span>` : ''}
+        ${s.avg_memory_pct !== null ? `<span class="mini-stat">RAM: ${s.avg_memory_pct}%</span>` : ''}
+      </div>` : ''}
+    </div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function setGroupFilter(groupId) {
+  activeGroupFilter = groupId;
+  renderFleet();
+}
+
+function renderGroupBadges(serverId) {
+  const groups = serverGroupsMap[serverId] || [];
+  if (groups.length === 0) return '';
+  return '<div style="margin-bottom:0.5rem">' + groups.map(g =>
+    `<span class="group-badge" style="color:${esc(g.color)};border-color:${esc(g.color)}30;background:${esc(g.color)}15">${esc(g.icon)} ${esc(g.name)}</span>`
+  ).join('') + '</div>';
+}
+
+function isServerInActiveGroup(serverId) {
+  if (activeGroupFilter === null) return true;
+  const groups = serverGroupsMap[serverId] || [];
+  return groups.some(g => g.id === activeGroupFilter);
+}
+
+const GROUP_COLOR_PRESETS = [
+  '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
+  '#ec4899', '#f43f5e', '#ef4444', '#f97316',
+  '#f59e0b', '#eab308', '#84cc16', '#22c55e',
+  '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9',
+  '#3b82f6', '#6366f1'
+];
+
+function showCreateGroupModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:520px">
+      <h3>📁 Create Server Group</h3>
+      <div class="form-group">
+        <label>Group Name *</label>
+        <input type="text" id="grp-name" placeholder="e.g., Production, Dev, Eagle Sentinel">
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" id="grp-desc" placeholder="Servers for the production environment">
+      </div>
+      <div class="form-group">
+        <label>Icon (emoji)</label>
+        <input type="text" id="grp-icon" value="📁" placeholder="📁" style="width:80px;text-align:center;font-size:1.2rem">
+        <span style="font-size:0.65rem;color:var(--text-muted);margin-left:0.5rem">Paste any emoji</span>
+      </div>
+      <div class="form-group">
+        <label>Color</label>
+        <div class="group-color-swatches" id="grp-color-swatches">
+          ${GROUP_COLOR_PRESETS.map((c, i) =>
+            `<div class="group-color-swatch ${i === 0 ? 'selected' : ''}" style="background:${c}" onclick="selectGroupColor(this,'${c}')" data-color="${c}"></div>`
+          ).join('')}
+        </div>
+        <input type="hidden" id="grp-color" value="${GROUP_COLOR_PRESETS[0]}">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="createGroup()">Create Group</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function selectGroupColor(el, color) {
+  document.querySelectorAll('.group-color-swatch').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+  const input = document.getElementById('grp-color');
+  if (input) input.value = color;
+}
+
+async function createGroup() {
+  const name = $('grp-name')?.value.trim();
+  const description = $('grp-desc')?.value.trim();
+  const icon = $('grp-icon')?.value.trim() || '📁';
+  const color = $('grp-color')?.value || '#6366f1';
+
+  if (!name) { toast('Group name required', 'error'); return; }
+
+  try {
+    await api('/groups', { method: 'POST', body: JSON.stringify({ name, description, icon, color }) });
+    toast(`Group "${name}" created`);
+    document.querySelector('.modal-overlay')?.remove();
+    await loadGroups();
+    renderFleet();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function showEditGroupModal(groupId) {
+  const group = groupsCache.find(g => g.id === groupId);
+  if (!group) return;
+
+  // Fetch all servers + current members
+  let allServers = [];
+  try { allServers = await api('/servers'); } catch {}
+
+  let members = [];
+  try {
+    const detail = await api(`/groups/${groupId}`);
+    members = (detail.servers || []).map(s => s.id);
+  } catch {}
+
+  const memberSet = new Set(members);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:560px">
+      <h3>${esc(group.icon)} Edit Group: ${esc(group.name)}</h3>
+      <div class="form-group">
+        <label>Group Name</label>
+        <input type="text" id="egrp-name" value="${esc(group.name)}">
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" id="egrp-desc" value="${esc(group.description || '')}">
+      </div>
+      <div class="form-group">
+        <label>Icon</label>
+        <input type="text" id="egrp-icon" value="${esc(group.icon)}" style="width:80px;text-align:center;font-size:1.2rem">
+      </div>
+      <div class="form-group">
+        <label>Color</label>
+        <div class="group-color-swatches" id="egrp-color-swatches">
+          ${GROUP_COLOR_PRESETS.map(c =>
+            `<div class="group-color-swatch ${c === group.color ? 'selected' : ''}" style="background:${c}" onclick="selectEditGroupColor(this,'${c}')" data-color="${c}"></div>`
+          ).join('')}
+        </div>
+        <input type="hidden" id="egrp-color" value="${esc(group.color)}">
+      </div>
+      <div class="form-group">
+        <label>Servers in Group</label>
+        <div class="group-assign-list">
+          ${allServers.map(s => `
+            <label class="group-assign-item">
+              <input type="checkbox" class="egrp-server-cb" value="${s.id}" ${memberSet.has(s.id) ? 'checked' : ''}>
+              <span class="status-dot ${s.status || 'unknown'}" style="width:8px;height:8px"></span>
+              ${esc(s.name)}
+            </label>
+          `).join('')}
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-danger" onclick="deleteGroup('${groupId}','${esc(group.name)}')">🗑️ Delete</button>
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="saveGroupEdit('${groupId}')">Save Changes</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function selectEditGroupColor(el, color) {
+  el.closest('.group-color-swatches').querySelectorAll('.group-color-swatch').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+  const input = document.getElementById('egrp-color');
+  if (input) input.value = color;
+}
+
+async function saveGroupEdit(groupId) {
+  const name = $('egrp-name')?.value.trim();
+  const description = $('egrp-desc')?.value.trim();
+  const icon = $('egrp-icon')?.value.trim();
+  const color = $('egrp-color')?.value;
+
+  if (!name) { toast('Group name required', 'error'); return; }
+
+  try {
+    // Update group metadata
+    await api(`/groups/${groupId}`, { method: 'PUT', body: JSON.stringify({ name, description, icon, color }) });
+
+    // Get current members and desired members
+    let currentMembers = [];
+    try {
+      const detail = await api(`/groups/${groupId}`);
+      currentMembers = (detail.servers || []).map(s => s.id);
+    } catch {}
+
+    const checkedBoxes = document.querySelectorAll('.egrp-server-cb:checked');
+    const desiredMembers = new Set(Array.from(checkedBoxes).map(cb => cb.value));
+    const currentSet = new Set(currentMembers);
+
+    // Add new members
+    for (const sid of desiredMembers) {
+      if (!currentSet.has(sid)) {
+        await api(`/groups/${groupId}/servers`, { method: 'POST', body: JSON.stringify({ server_id: sid }) });
+      }
+    }
+    // Remove old members
+    for (const sid of currentSet) {
+      if (!desiredMembers.has(sid)) {
+        await api(`/groups/${groupId}/servers/${sid}`, { method: 'DELETE' });
+      }
+    }
+
+    toast(`Group "${name}" updated`);
+    document.querySelector('.modal-overlay')?.remove();
+    await loadGroups();
+    renderFleet();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteGroup(groupId, name) {
+  if (!confirm(`Delete group "${name}"? Servers won't be removed, just the group.`)) return;
+  try {
+    await api(`/groups/${groupId}`, { method: 'DELETE' });
+    toast(`Group "${name}" deleted`);
+    if (activeGroupFilter === groupId) activeGroupFilter = null;
+    document.querySelector('.modal-overlay')?.remove();
+    await loadGroups();
+    renderFleet();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function showAssignGroupsModal(serverId, serverName) {
+  let serverGroups = [];
+  try { serverGroups = await api(`/servers/${serverId}/groups`); } catch {}
+  const memberSet = new Set(serverGroups.map(g => g.id));
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>📁 Assign Groups — ${esc(serverName)}</h3>
+      <div class="group-assign-list">
+        ${groupsCache.length === 0 ? '<p class="no-data">No groups yet. Create one first.</p>' :
+          groupsCache.map(g => `
+            <label class="group-assign-item">
+              <input type="checkbox" class="assign-grp-cb" value="${g.id}" data-server="${serverId}" ${memberSet.has(g.id) ? 'checked' : ''}>
+              <span style="color:${esc(g.color)}">${esc(g.icon)}</span>
+              ${esc(g.name)}
+            </label>
+          `).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-primary" style="width:auto;padding:0.6rem 1.5rem" onclick="saveServerGroupAssignment('${serverId}')">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function saveServerGroupAssignment(serverId) {
+  const checkedBoxes = document.querySelectorAll('.assign-grp-cb:checked');
+  const desiredGroups = new Set(Array.from(checkedBoxes).map(cb => cb.value));
+
+  let currentGroups = [];
+  try { currentGroups = await api(`/servers/${serverId}/groups`); } catch {}
+  const currentSet = new Set(currentGroups.map(g => g.id));
+
+  try {
+    for (const gid of desiredGroups) {
+      if (!currentSet.has(gid)) {
+        await api(`/groups/${gid}/servers`, { method: 'POST', body: JSON.stringify({ server_id: serverId }) });
+      }
+    }
+    for (const gid of currentSet) {
+      if (!desiredGroups.has(gid)) {
+        await api(`/groups/${gid}/servers/${serverId}`, { method: 'DELETE' });
+      }
+    }
+    toast('Group assignments updated');
+    document.querySelector('.modal-overlay')?.remove();
+    await loadGroups();
+    renderFleet();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // ═══════════════════════════════════════════════════════════

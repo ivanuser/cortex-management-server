@@ -186,6 +186,26 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
   CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
 
+  -- Server Groups
+  CREATE TABLE IF NOT EXISTS server_groups (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    icon TEXT DEFAULT '📁',
+    color TEXT DEFAULT '#6366f1',
+    created_by TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS server_group_members (
+    group_id TEXT NOT NULL,
+    server_id TEXT NOT NULL,
+    PRIMARY KEY (group_id, server_id),
+    FOREIGN KEY (group_id) REFERENCES server_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+  );
+
   -- Phase 5: Usage Tracking
   CREATE TABLE IF NOT EXISTS usage_tracking (
     id TEXT PRIMARY KEY,

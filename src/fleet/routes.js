@@ -17,6 +17,199 @@ function audit(userId, action, details, ip, serverId = null) {
   ).run(crypto.randomUUID(), userId, serverId, action, details, ip);
 }
 
+// ─── Server Groups ──────────────────────────────────────────
+
+/**
+ * GET /api/v1/groups — list all groups with member counts and aggregate health
+ */
+router.get('/groups', authenticate, (req, res) => {
+  const groups = db.prepare(`
+    SELECT g.*,
+      COUNT(gm.server_id) AS member_count,
+      u.username AS created_by_username
+    FROM server_groups g
+    LEFT JOIN server_group_members gm ON gm.group_id = g.id
+    LEFT JOIN users u ON u.id = g.created_by
+    GROUP BY g.id
+    ORDER BY g.name
+  `).all();
+
+  // Attach aggregate health per group
+  for (const g of groups) {
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN s.status = 'online' THEN 1 ELSE 0 END) AS online,
+        SUM(CASE WHEN s.status = 'offline' THEN 1 ELSE 0 END) AS offline,
+        AVG(h.cpu_percent) AS avg_cpu,
+        AVG(CASE WHEN h.memory_total_mb > 0 THEN h.memory_used_mb * 100.0 / h.memory_total_mb ELSE NULL END) AS avg_memory_pct
+      FROM server_group_members gm
+      JOIN servers s ON s.id = gm.server_id
+      LEFT JOIN health_snapshots h ON h.id = (
+        SELECT h2.id FROM health_snapshots h2
+        WHERE h2.server_id = s.id
+        ORDER BY h2.recorded_at DESC LIMIT 1
+      )
+      WHERE gm.group_id = ?
+    `).get(g.id);
+    g.stats = {
+      total: stats?.total || 0,
+      online: stats?.online || 0,
+      offline: stats?.offline || 0,
+      avg_cpu: stats?.avg_cpu ? parseFloat(stats.avg_cpu.toFixed(1)) : null,
+      avg_memory_pct: stats?.avg_memory_pct ? parseFloat(stats.avg_memory_pct.toFixed(1)) : null
+    };
+  }
+
+  res.json(groups);
+});
+
+/**
+ * GET /api/v1/groups/:id — group detail with servers and aggregate stats
+ */
+router.get('/groups/:id', authenticate, (req, res) => {
+  const group = db.prepare(`
+    SELECT g.*, u.username AS created_by_username
+    FROM server_groups g
+    LEFT JOIN users u ON u.id = g.created_by
+    WHERE g.id = ?
+  `).get(req.params.id);
+
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+
+  const servers = db.prepare(`
+    SELECT s.*,
+      h.cpu_percent, h.memory_used_mb, h.memory_total_mb,
+      h.disk_used_gb, h.disk_total_gb, h.disk_percent, h.uptime,
+      h.recorded_at AS health_recorded_at
+    FROM server_group_members gm
+    JOIN servers s ON s.id = gm.server_id
+    LEFT JOIN health_snapshots h ON h.id = (
+      SELECT h2.id FROM health_snapshots h2
+      WHERE h2.server_id = s.id
+      ORDER BY h2.recorded_at DESC LIMIT 1
+    )
+    WHERE gm.group_id = ?
+    ORDER BY s.name
+  `).all(req.params.id);
+
+  const online = servers.filter(s => s.status === 'online').length;
+  const offline = servers.filter(s => s.status === 'offline').length;
+  const avgCpu = servers.reduce((sum, s) => sum + (s.cpu_percent || 0), 0) / (servers.length || 1);
+  const avgMem = servers.reduce((sum, s) => {
+    if (s.memory_used_mb && s.memory_total_mb) return sum + (s.memory_used_mb / s.memory_total_mb * 100);
+    return sum;
+  }, 0) / (servers.length || 1);
+
+  group.servers = servers;
+  group.stats = {
+    total: servers.length,
+    online, offline,
+    avg_cpu: parseFloat(avgCpu.toFixed(1)),
+    avg_memory_pct: parseFloat(avgMem.toFixed(1))
+  };
+
+  res.json(group);
+});
+
+/**
+ * POST /api/v1/groups — create a group
+ */
+router.post('/groups', authenticate, requireRole('admin', 'operator'), (req, res) => {
+  const { name, description, icon, color } = req.body;
+  if (!name) return res.status(400).json({ error: 'Group name required' });
+
+  const id = crypto.randomUUID();
+  db.prepare(`
+    INSERT INTO server_groups (id, name, description, icon, color, created_by)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, name, description || null, icon || '📁', color || '#6366f1', req.user.id);
+
+  audit(req.user.id, 'group_created', `Created group: ${name}`, req.ip);
+  res.status(201).json({ id, name });
+});
+
+/**
+ * PUT /api/v1/groups/:id — update a group
+ */
+router.put('/groups/:id', authenticate, requireRole('admin', 'operator'), (req, res) => {
+  const group = db.prepare('SELECT * FROM server_groups WHERE id = ?').get(req.params.id);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+
+  const { name, description, icon, color } = req.body;
+  db.prepare(`
+    UPDATE server_groups SET name = ?, description = ?, icon = ?, color = ?
+    WHERE id = ?
+  `).run(
+    name || group.name,
+    description !== undefined ? description : group.description,
+    icon || group.icon,
+    color || group.color,
+    req.params.id
+  );
+
+  audit(req.user.id, 'group_updated', `Updated group: ${name || group.name}`, req.ip);
+  res.json({ message: 'Group updated' });
+});
+
+/**
+ * DELETE /api/v1/groups/:id — delete a group
+ */
+router.delete('/groups/:id', authenticate, requireRole('admin'), (req, res) => {
+  const group = db.prepare('SELECT name FROM server_groups WHERE id = ?').get(req.params.id);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+
+  db.prepare('DELETE FROM server_groups WHERE id = ?').run(req.params.id);
+  audit(req.user.id, 'group_deleted', `Deleted group: ${group.name}`, req.ip);
+  res.json({ message: 'Group deleted' });
+});
+
+/**
+ * POST /api/v1/groups/:id/servers — add a server to a group
+ */
+router.post('/groups/:id/servers', authenticate, requireRole('admin', 'operator'), (req, res) => {
+  const { server_id } = req.body;
+  if (!server_id) return res.status(400).json({ error: 'server_id required' });
+
+  const group = db.prepare('SELECT name FROM server_groups WHERE id = ?').get(req.params.id);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+
+  const server = db.prepare('SELECT name FROM servers WHERE id = ?').get(server_id);
+  if (!server) return res.status(404).json({ error: 'Server not found' });
+
+  try {
+    db.prepare('INSERT OR IGNORE INTO server_group_members (group_id, server_id) VALUES (?, ?)').run(req.params.id, server_id);
+  } catch (e) {
+    return res.status(409).json({ error: 'Server already in group' });
+  }
+
+  audit(req.user.id, 'group_server_added', `Added ${server.name} to group ${group.name}`, req.ip);
+  res.status(201).json({ message: 'Server added to group' });
+});
+
+/**
+ * DELETE /api/v1/groups/:id/servers/:serverId — remove a server from a group
+ */
+router.delete('/groups/:id/servers/:serverId', authenticate, requireRole('admin', 'operator'), (req, res) => {
+  const result = db.prepare('DELETE FROM server_group_members WHERE group_id = ? AND server_id = ?').run(req.params.id, req.params.serverId);
+  if (result.changes === 0) return res.status(404).json({ error: 'Membership not found' });
+  res.json({ message: 'Server removed from group' });
+});
+
+/**
+ * GET /api/v1/servers/:id/groups — get groups for a specific server
+ */
+router.get('/servers/:id/groups', authenticate, (req, res) => {
+  const groups = db.prepare(`
+    SELECT g.id, g.name, g.icon, g.color
+    FROM server_group_members gm
+    JOIN server_groups g ON g.id = gm.group_id
+    WHERE gm.server_id = ?
+    ORDER BY g.name
+  `).all(req.params.id);
+  res.json(groups);
+});
+
 // ─── Servers ────────────────────────────────────────────────
 
 /**
