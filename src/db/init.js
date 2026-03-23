@@ -172,6 +172,17 @@ db.exec(`
     FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_notifications_server_id ON notifications(server_id);
+
+  CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_id TEXT NOT NULL,
+    user_id TEXT,
+    role TEXT NOT NULL DEFAULT 'user',
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_chat_server ON chat_messages(server_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
   CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
 

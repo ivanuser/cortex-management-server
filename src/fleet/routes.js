@@ -949,6 +949,41 @@ router.put('/notifications/read-all', authenticate, (req, res) => {
   res.json({ message: 'All notifications marked as read' });
 });
 
+// ─── Chat History ───────────────────────────────────────────
+
+/**
+ * GET /api/v1/servers/:id/chat — get chat history for a server
+ */
+router.get('/servers/:id/chat', authenticate, (req, res) => {
+  const limit = parseInt(req.query.limit) || 100;
+  const messages = db.prepare(
+    'SELECT id, role, content, created_at FROM chat_messages WHERE server_id = ? ORDER BY created_at DESC LIMIT ?'
+  ).all(req.params.id, limit).reverse();
+  res.json(messages);
+});
+
+/**
+ * POST /api/v1/servers/:id/chat — save a chat message
+ */
+router.post('/servers/:id/chat', authenticate, (req, res) => {
+  const { role, content } = req.body;
+  if (!role || !content) return res.status(400).json({ error: 'role and content required' });
+  
+  const result = db.prepare(
+    'INSERT INTO chat_messages (server_id, user_id, role, content) VALUES (?, ?, ?, ?)'
+  ).run(req.params.id, req.user.id, role, content);
+  
+  res.status(201).json({ id: result.lastInsertRowid });
+});
+
+/**
+ * DELETE /api/v1/servers/:id/chat — clear chat history for a server
+ */
+router.delete('/servers/:id/chat', authenticate, requireRole('admin'), (req, res) => {
+  const result = db.prepare('DELETE FROM chat_messages WHERE server_id = ?').run(req.params.id);
+  res.json({ deleted: result.changes });
+});
+
 // ─── Analytics ──────────────────────────────────────────────
 
 /**

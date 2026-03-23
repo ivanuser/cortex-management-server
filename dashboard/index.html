@@ -2271,18 +2271,36 @@ function renderChat() {
   if (!selectedServer) return;
 }
 
-function loadChatHistory() {
-  const key = chatStorageKey();
-  if (!key) return;
+async function loadChatHistory() {
+  if (!selectedServer) return;
   const scroll = $('chat-scroll');
   scroll.innerHTML = '';
-  const history = JSON.parse(localStorage.getItem(key) || '[]');
-  history.forEach(m => {
-    const el = document.createElement('div');
-    el.className = 'msg ' + m.role;
-    el.innerHTML = msgHead(m.role) + `<div class="msg-body">${fmtText(m.text)}</div>`;
-    scroll.appendChild(el);
-  });
+  
+  try {
+    // Load from server DB
+    const messages = await api('/servers/' + selectedServer.id + '/chat?limit=100');
+    if (Array.isArray(messages) && messages.length > 0) {
+      messages.forEach(m => {
+        const el = document.createElement('div');
+        el.className = 'msg ' + m.role;
+        el.innerHTML = msgHead(m.role) + `<div class="msg-body">${fmtText(m.content || m.text || '')}</div>`;
+        scroll.appendChild(el);
+      });
+    }
+  } catch {
+    // Fallback to localStorage
+    const key = chatStorageKey();
+    if (key) {
+      const history = JSON.parse(localStorage.getItem(key) || '[]');
+      history.forEach(m => {
+        const el = document.createElement('div');
+        el.className = 'msg ' + m.role;
+        el.innerHTML = msgHead(m.role) + `<div class="msg-body">${fmtText(m.text || '')}</div>`;
+        scroll.appendChild(el);
+      });
+    }
+  }
+  
   scroll.scrollTop = scroll.scrollHeight;
 
   // If no history, send a greeting
@@ -2362,6 +2380,14 @@ function addChatMsg(role, text, rawHtml, skipSave) {
 }
 
 function saveChatMsg(role, text) {
+  // Save to server DB
+  if (selectedServer?.id && text) {
+    api('/servers/' + selectedServer.id + '/chat', {
+      method: 'POST',
+      body: JSON.stringify({ role, content: text })
+    }).catch(() => {}); // fire and forget
+  }
+  // Also save to localStorage as fallback
   const key = chatStorageKey();
   if (!key) return;
   const history = JSON.parse(localStorage.getItem(key) || '[]');
