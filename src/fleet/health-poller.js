@@ -3,7 +3,12 @@ import { db } from '../db/init.js';
 import { fireWebhookEvent } from './webhooks.js';
 
 const POLL_INTERVAL = 30_000; // 30 seconds
+const GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/scripts/cortexos-version.json';
+const VERSION_CACHE_TTL = 300_000; // 5 minutes
+
 let pollTimer = null;
+let latestVersionCache = null;
+let latestVersionFetchedAt = 0;
 
 /**
  * Fetch health stats from a single server's /stats.json endpoint
@@ -54,9 +59,67 @@ async function fetchServerSkills(server) {
 }
 
 /**
+ * Fetch version.json from a server's dashboard
+ */
+async function fetchServerVersion(server) {
+  if (!server.gateway_url) return null;
+
+  const url = server.gateway_url.replace(/\/+$/, '') + '/version.json';
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch the latest version from GitHub (cached for 5 min)
+ */
+async function fetchLatestVersion() {
+  const now = Date.now();
+  if (latestVersionCache && (now - latestVersionFetchedAt) < VERSION_CACHE_TTL) {
+    return latestVersionCache;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+
+    const res = await fetch(GITHUB_VERSION_URL, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) return latestVersionCache;
+    const data = await res.json();
+    latestVersionCache = data;
+    latestVersionFetchedAt = now;
+    return data;
+  } catch {
+    return latestVersionCache;
+  }
+}
+
+/**
+ * Get the cached latest version (for API endpoints)
+ */
+export function getLatestVersion() {
+  return latestVersionCache;
+}
+
+/**
  * Poll all registered servers for health data
  */
 async function pollAll() {
+  // Refresh latest version from GitHub (cached)
+  await fetchLatestVersion();
+
   const servers = db.prepare(
     'SELECT id, name, gateway_url, status FROM servers'
   ).all();
@@ -103,6 +166,16 @@ async function pollAll() {
             ).run(skillsData.count, server.id);
           }
         } catch {}
+
+        // Fetch agent version (non-blocking)
+        try {
+          const versionData = await fetchServerVersion(server);
+          if (versionData && versionData.version) {
+            db.prepare(
+              'UPDATE servers SET agent_version = ? WHERE id = ?'
+            ).run(versionData.version, server.id);
+          }
+        } catch {}
       } else {
         // No response — check if we should mark offline
         if (server.status === 'online') {
@@ -144,4 +217,4 @@ export function stopHealthPoller() {
   }
 }
 
-export default { startHealthPoller, stopHealthPoller };
+export default { startHealthPoller, stopHealthPoller, getLatestVersion };

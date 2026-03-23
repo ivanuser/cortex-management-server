@@ -210,6 +210,7 @@ const migrations = [
   { table: 'install_tokens', column: 'config', sql: "ALTER TABLE install_tokens ADD COLUMN config TEXT DEFAULT '{}'" },
   { table: 'users', column: 'display_name', sql: 'ALTER TABLE users ADD COLUMN display_name TEXT' },
   { table: 'users', column: 'avatar_data', sql: 'ALTER TABLE users ADD COLUMN avatar_data TEXT' },
+  { table: 'servers', column: 'agent_version', sql: 'ALTER TABLE servers ADD COLUMN agent_version TEXT' },
 ];
 for (const m of migrations) {
   try {

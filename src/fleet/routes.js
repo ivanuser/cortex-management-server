@@ -6,6 +6,7 @@ import { getActiveIncidentCount } from './incident-response.js';
 import { fireWebhookEvent, sendTestWebhook, WEBHOOK_EVENTS } from './webhooks.js';
 import { calculateNextRun } from './scheduler.js';
 import { getTemplates, getTemplate, applyTemplate } from './templates.js';
+import { getLatestVersion } from './health-poller.js';
 
 const router = Router();
 
@@ -676,6 +677,102 @@ async function sendFleetCommand(server, command) {
     console.error(`[Fleet] Failed to send to ${server.name}:`, err.message);
   }
 }
+
+// ─── Updates ────────────────────────────────────────────────
+
+/**
+ * GET /api/v1/updates/check — check latest version and compare against fleet
+ */
+router.get('/updates/check', authenticate, async (req, res) => {
+  try {
+    // Fetch latest version from GitHub
+    let latest = getLatestVersion();
+    if (!latest) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10_000);
+        const ghRes = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/scripts/cortexos-version.json', { signal: controller.signal });
+        clearTimeout(timeout);
+        if (ghRes.ok) latest = await ghRes.json();
+      } catch {}
+    }
+
+    if (!latest) {
+      return res.status(502).json({ error: 'Could not fetch latest version from GitHub' });
+    }
+
+    // Get all servers with their versions
+    const servers = db.prepare(
+      'SELECT id, name, status, agent_version FROM servers ORDER BY name'
+    ).all();
+
+    const results = servers.map(s => ({
+      server_id: s.id,
+      server_name: s.name,
+      status: s.status,
+      current_version: s.agent_version || null,
+      latest_version: latest.version,
+      up_to_date: s.agent_version === latest.version,
+      needs_update: s.agent_version && s.agent_version !== latest.version
+    }));
+
+    res.json({
+      latest_version: latest.version,
+      latest: latest,
+      servers: results,
+      servers_needing_update: results.filter(r => r.needs_update).length,
+      servers_up_to_date: results.filter(r => r.up_to_date).length,
+      servers_unknown: results.filter(r => !r.current_version).length
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/v1/servers/:id/update — trigger update on a single server
+ */
+router.post('/servers/:id/update', authenticate, requireRole('admin', 'operator'), async (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) {
+    return res.status(404).json({ error: 'Server not found' });
+  }
+
+  if (!server.gateway_url || !server.gateway_token) {
+    return res.status(400).json({ error: 'Server has no gateway configured' });
+  }
+
+  // Send update command via WebSocket
+  try {
+    await sendFleetCommand(server, 'Run: sudo cortexos-update');
+    audit(req.user.id, 'server_update', `Triggered update on server: ${server.name}`, req.ip, server.id);
+    res.json({ message: 'Update command sent', server_id: server.id, server_name: server.name });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to send update command: ' + e.message });
+  }
+});
+
+/**
+ * POST /api/v1/fleet/update — trigger update on ALL online servers
+ */
+router.post('/fleet/update', authenticate, requireRole('admin'), async (req, res) => {
+  const servers = db.prepare(
+    "SELECT * FROM servers WHERE status = 'online' AND gateway_url IS NOT NULL AND gateway_token IS NOT NULL"
+  ).all();
+
+  const results = [];
+  for (const server of servers) {
+    try {
+      await sendFleetCommand(server, 'Run: sudo cortexos-update');
+      results.push({ server_id: server.id, server_name: server.name, status: 'sent' });
+    } catch (e) {
+      results.push({ server_id: server.id, server_name: server.name, status: 'failed', error: e.message });
+    }
+  }
+
+  audit(req.user.id, 'fleet_update', `Fleet update triggered on ${results.filter(r => r.status === 'sent').length} servers`, req.ip);
+  res.json({ results, total_sent: results.filter(r => r.status === 'sent').length });
+});
 
 // ─── Centralized Backups ────────────────────────────────────
 

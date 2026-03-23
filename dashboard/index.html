@@ -1238,6 +1238,96 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 }
 @keyframes chatToastIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
 @keyframes chatToastOut { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(20px); } }
+
+/* ─── Version Badges ────────────────── */
+.version-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+}
+.version-badge.current {
+  background: var(--green-bg);
+  color: var(--green);
+  border: 1px solid rgba(0, 184, 148, 0.2);
+}
+.version-badge.outdated {
+  background: var(--yellow-bg);
+  color: var(--yellow);
+  border: 1px solid rgba(254, 202, 87, 0.2);
+}
+.version-badge.unknown {
+  background: rgba(122, 131, 166, 0.1);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+/* ─── Updates Page ────────────────── */
+.update-server-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+  transition: border-color 0.2s;
+}
+.update-server-row:hover {
+  border-color: var(--border-glow);
+}
+.update-server-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.update-server-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.update-server-versions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+.update-arrow {
+  color: var(--yellow);
+  font-size: 0.8rem;
+}
+.update-check {
+  color: var(--green);
+  font-size: 0.9rem;
+}
+.update-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.update-summary-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  text-align: center;
+}
+.update-summary-card .value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+.update-summary-card .label {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
 </style>
 </head>
 <body>
@@ -1387,6 +1477,10 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 
       <div class="sidebar-section">
         <div class="sidebar-title">Administration</div>
+        <div class="nav-item" data-page="updates" onclick="navigate('updates')">
+          <span class="icon">🔄</span> Updates
+          <span class="badge-count" id="update-count" style="display:none">0</span>
+        </div>
         <div class="nav-item" data-page="users" onclick="navigate('users')" id="nav-users">
           <span class="icon">👤</span> Users
         </div>
@@ -1602,6 +1696,11 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
       </div>
 
       <!-- Users Page -->
+      <!-- Updates Page -->
+      <div class="page" id="page-updates">
+        <div class="page-scroll" id="updates-content"></div>
+      </div>
+
       <div class="page" id="page-users">
         <div class="page-scroll" id="users-content"></div>
       </div>
@@ -1661,6 +1760,7 @@ let fleetPollInterval = null;
 let aiName = 'CortexOS';
 let wsOneTimeHandlers = [];
 let cmdCallbacks = {};
+let fleetLatestVersion = null;
 
 const API = '/api/v1';
 const $ = id => document.getElementById(id);
@@ -1942,7 +2042,8 @@ function navigate(page) {
     fleet: renderFleet, add: renderAdd, chat: renderChat, skills: renderSkills,
     terminal: renderTerminal, health: renderHealth, files: renderFiles,
     services: renderServices, docker: renderDocker, logs: renderLogs,
-    network: renderNetwork, packages: renderPackages, cron: renderCron, compliance: renderCompliance, users: renderUsers,
+    network: renderNetwork, packages: renderPackages, cron: renderCron, compliance: renderCompliance,
+    updates: renderUpdates, users: renderUsers,
     settings: renderSettings, audit: renderAudit, schedules: renderSchedules,
     'incidents-page': renderIncidentsPage, analytics: renderAnalytics
   };
@@ -2998,6 +3099,26 @@ async function renderFleet() {
   const el = $('fleet-content');
 
   try {
+    // Fetch latest version (non-blocking, don't fail fleet render)
+    try {
+      const updateCheck = await api('/updates/check');
+      fleetLatestVersion = updateCheck.latest_version;
+      const needsUpdate = updateCheck.servers_needing_update || 0;
+      const updateBadge = $('update-count');
+      if (updateBadge) {
+        if (needsUpdate > 0) {
+          updateBadge.textContent = needsUpdate;
+          updateBadge.style.display = '';
+        } else {
+          updateBadge.style.display = 'none';
+        }
+      }
+      const fleetUpdateBtn = $('btn-fleet-update');
+      if (fleetUpdateBtn) {
+        fleetUpdateBtn.style.display = needsUpdate > 0 ? '' : 'none';
+      }
+    } catch {}
+
     const servers = await api('/servers');
     $('fleet-count').textContent = servers.length;
 
@@ -3031,6 +3152,7 @@ async function renderFleet() {
         <div style="display:flex;align-items:center;gap:1rem">
           <span style="color:var(--text-muted);font-size:0.78rem">${servers.length} server${servers.length !== 1 ? 's' : ''}</span>
           <button class="btn-skills" onclick="showFleetCommandModal()">⚡ Fleet Command</button>
+          <button class="btn-skills" onclick="triggerFleetUpdate()" id="btn-fleet-update" style="display:none">🔄 Update All</button>
           <button class="btn-skills" onclick="navigate('add')">➕ Add Server</button>
         </div>
       </div>
@@ -3059,6 +3181,7 @@ async function renderFleet() {
           <span class="server-card-ip">${esc(s.ip_address || s.hostname || '')}</span>
         </div>
         ${s.agent_name ? `<div class="server-card-agent">🤖 ${esc(s.agent_name)}${s.skills_count ? `<span class="skills-badge">🧩 ${s.skills_count} skills</span>` : ''}</div>` : '<div class="server-card-agent" style="opacity:0.3">No agent configured</div>'}
+        ${s.agent_version ? `<div style="margin-bottom:0.5rem"><span class="version-badge ${(fleetLatestVersion && s.agent_version !== fleetLatestVersion) ? 'outdated' : 'current'}">v${esc(s.agent_version)}</span>${(fleetLatestVersion && s.agent_version !== fleetLatestVersion) ? '<span class="version-badge outdated" style="margin-left:0.3rem">⬆ Update Available</span>' : ''}</div>` : ''}
         <div class="stat-bars">
           ${cpuPct !== null ? `<div class="stat-row">
             <span class="stat-label">CPU</span>
@@ -3161,11 +3284,17 @@ async function renderHealth() {
         </div>
         <div class="agent-info-stats">
           <div class="agent-stat"><div class="val" style="color:${s.status === 'online' ? 'var(--green)' : 'var(--red)'}">● ${s.status || 'unknown'}</div><div class="lbl">Status</div></div>
+          <div class="agent-stat"><div class="val">${s.agent_version ? 'v' + esc(s.agent_version) : '—'}</div><div class="lbl">Version</div></div>
           <div class="agent-stat"><div class="val">${s.skills_count || 0}</div><div class="lbl">Skills</div></div>
           <div class="agent-stat"><div class="val">${cpuPct ? Math.round(cpuPct) + '%' : '—'}</div><div class="lbl">CPU</div></div>
           <div class="agent-stat"><div class="val">${memPct ? memPct + '%' : '—'}</div><div class="lbl">Memory</div></div>
           <div class="agent-stat"><div class="val">${diskPct ? Math.round(diskPct) + '%' : '—'}</div><div class="lbl">Disk</div></div>
         </div>
+        ${(s.agent_version && fleetLatestVersion && s.agent_version !== fleetLatestVersion) ? `
+        <div style="margin-top:0.75rem;padding:0.6rem 1rem;background:var(--yellow-bg);border:1px solid rgba(254,202,87,0.2);border-radius:var(--radius);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:0.8rem;color:var(--yellow)">⬆ Update available: v${esc(fleetLatestVersion)}</span>
+          <button class="btn-skills" style="font-size:0.7rem;padding:0.3rem 0.8rem" onclick="triggerServerUpdate('${s.id}')">🔄 Update Now</button>
+        </div>` : ''}
       </div>
 
       <div class="info-grid">
@@ -4476,6 +4605,119 @@ async function saveServerEdit(serverId) {
 // ═══════════════════════════════════════════════════════════
 // ANALYTICS PAGE
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// UPDATES PAGE
+// ═══════════════════════════════════════════════════════════
+async function renderUpdates() {
+  const el = $('updates-content');
+  el.innerHTML = '<p style="color:var(--text-dim);padding:1.5rem">Checking for updates...</p>';
+
+  try {
+    const data = await api('/updates/check');
+    fleetLatestVersion = data.latest_version;
+
+    let html = `
+      <div class="section-header">
+        <h2>🔄 <span>Fleet</span> Updates</h2>
+        <div style="display:flex;gap:0.5rem">
+          ${data.servers_needing_update > 0 ? `<button class="btn-skills" onclick="triggerFleetUpdate()">🔄 Update All (${data.servers_needing_update})</button>` : ''}
+          <button class="btn-skills" onclick="renderUpdates()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <div class="update-summary-cards">
+        <div class="update-summary-card">
+          <div class="value" style="color:var(--accent-light)">v${esc(data.latest_version)}</div>
+          <div class="label">Latest Version</div>
+        </div>
+        <div class="update-summary-card">
+          <div class="value" style="color:var(--green)">${data.servers_up_to_date}</div>
+          <div class="label">Up to Date</div>
+        </div>
+        <div class="update-summary-card">
+          <div class="value" style="color:${data.servers_needing_update > 0 ? 'var(--yellow)' : 'var(--green)'}">${data.servers_needing_update}</div>
+          <div class="label">Need Update</div>
+        </div>
+        <div class="update-summary-card">
+          <div class="value" style="color:var(--text-muted)">${data.servers_unknown}</div>
+          <div class="label">Unknown Version</div>
+        </div>
+      </div>
+
+      ${data.latest ? `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.25rem;margin-bottom:1.5rem">
+        <div style="font-size:0.7rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Latest Release Details</div>
+        <div style="font-size:0.85rem;font-family:'JetBrains Mono',monospace;color:var(--text)">
+          Version: ${esc(data.latest.version)} &nbsp;&bull;&nbsp; Updated: ${esc(data.latest.updated || '—')}
+        </div>
+        ${data.latest.components ? `
+        <div style="margin-top:0.5rem;display:flex;flex-wrap:wrap;gap:0.5rem">
+          ${Object.entries(data.latest.components).map(([name, ver]) =>
+            `<span style="font-size:0.65rem;font-family:'JetBrains Mono',monospace;padding:0.2rem 0.5rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text-dim)">${esc(name)}: ${esc(ver)}</span>`
+          ).join('')}
+        </div>` : ''}
+      </div>` : ''}
+
+      <div style="font-size:0.7rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.75rem">Servers</div>`;
+
+    // Sort: needs update first, then up to date, then unknown
+    const sorted = [...data.servers].sort((a, b) => {
+      if (a.needs_update && !b.needs_update) return -1;
+      if (!a.needs_update && b.needs_update) return 1;
+      if (a.up_to_date && !b.up_to_date) return -1;
+      if (!a.up_to_date && b.up_to_date) return 1;
+      return 0;
+    });
+
+    for (const s of sorted) {
+      const statusDot = s.status === 'online' ? 'online' : 'offline';
+      html += `
+        <div class="update-server-row">
+          <div class="update-server-info">
+            <span class="status-dot ${statusDot}" style="width:8px;height:8px"></span>
+            <span class="update-server-name">${esc(s.server_name)}</span>
+            <div class="update-server-versions">
+              ${s.current_version
+                ? `<span class="version-badge ${s.up_to_date ? 'current' : 'outdated'}">v${esc(s.current_version)}</span>`
+                : '<span class="version-badge unknown">unknown</span>'}
+              ${s.needs_update ? `<span class="update-arrow">→</span><span class="version-badge current">v${esc(s.latest_version)}</span>` : ''}
+              ${s.up_to_date ? '<span class="update-check">✓</span>' : ''}
+            </div>
+          </div>
+          <div>
+            ${s.needs_update ? `<button class="btn-skills" style="font-size:0.7rem;padding:0.3rem 0.8rem" onclick="triggerServerUpdate('${s.server_id}')">🔄 Update</button>` : ''}
+          </div>
+        </div>`;
+    }
+
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `
+      <div class="section-header"><h2>🔄 <span>Fleet</span> Updates</h2></div>
+      <p class="error-msg">${esc(e.message)}</p>`;
+  }
+}
+
+async function triggerServerUpdate(serverId) {
+  if (!confirm('Send update command to this server? It will download and install the latest CortexOS components.')) return;
+  try {
+    const result = await api(`/servers/${serverId}/update`, { method: 'POST' });
+    toast(`Update command sent to ${result.server_name || 'server'}`);
+  } catch (e) {
+    toast('Failed to send update: ' + e.message, 'error');
+  }
+}
+
+async function triggerFleetUpdate() {
+  if (!confirm('Update ALL online servers? This will send the update command to every online server.')) return;
+  try {
+    const result = await api('/fleet/update', { method: 'POST' });
+    toast(`Update sent to ${result.total_sent} server${result.total_sent !== 1 ? 's' : ''}`);
+  } catch (e) {
+    toast('Fleet update failed: ' + e.message, 'error');
+  }
+}
+
 async function renderAnalytics() {
   const el = $('analytics-content');
   el.innerHTML = '<p style="color:var(--text-dim);padding:1.5rem">Loading analytics...</p>';
