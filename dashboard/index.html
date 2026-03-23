@@ -604,6 +604,8 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 .skill-card-btn.installed { background: var(--green-bg); color: var(--green); border-color: rgba(0,184,148,0.2); cursor: default; }
 .skill-card-btn.available { background: var(--accent-glow); color: var(--accent-light); border-color: var(--accent); }
 .skill-card-btn.available:hover { background: var(--accent-strong); box-shadow: 0 2px 8px var(--accent-glow); }
+.skill-card-btn.update { background: var(--yellow-bg); color: var(--yellow); border-color: rgba(254,202,87,0.3); cursor: pointer; }
+.skill-card-btn.update:hover { background: rgba(254,202,87,0.2); box-shadow: 0 2px 8px rgba(254,202,87,0.2); }
 
 /* ─── Health Page ───────────────────── */
 .info-grid {
@@ -3147,14 +3149,35 @@ const extendedSkills = [
   { name: 'finops-cost-optimization', icon: '💰', version: '0.3.0', description: 'FinOps & cloud cost optimization' },
 ];
 
-function renderSkillCard(skill, status) {
-  const btnClass = status === 'installed' ? 'installed' : 'available';
-  const btnText = status === 'installed' ? '✓ Installed' : '↓ Install';
-  const btnAction = status === 'available' ? `onclick="event.stopPropagation();installSkill('${skill.name}')"` : '';
-  return `<div class="skill-card" onclick="skillInfo('${skill.name}')">
+function renderSkillCard(skill, status, installedVersion) {
+  // Check if update is available by comparing installed version against GitHub manifest
+  let hasUpdate = false;
+  let latestVersion = skill.version;
+  if (status === 'installed' && installedVersion) {
+    const ghSkill = extendedSkills.find(s => s.name === skill.name);
+    if (ghSkill && ghSkill.version && ghSkill.version > installedVersion) {
+      hasUpdate = true;
+      latestVersion = ghSkill.version;
+    }
+  }
+
+  const btnClass = hasUpdate ? 'update' : status === 'installed' ? 'installed' : 'available';
+  const btnText = hasUpdate ? '⬆️ Update' : status === 'installed' ? '✓ Installed' : '↓ Install';
+  const btnAction = hasUpdate
+    ? `onclick="event.stopPropagation();installSkill('${skill.name}')"` 
+    : status === 'available' 
+    ? `onclick="event.stopPropagation();installSkill('${skill.name}')"` 
+    : '';
+
+  const updateBadge = hasUpdate 
+    ? `<span style="position:absolute;top:8px;right:8px;background:var(--yellow);color:#000;font-size:0.6rem;font-weight:700;padding:2px 6px;border-radius:10px;">UPDATE</span>` 
+    : '';
+
+  return `<div class="skill-card" style="position:relative" onclick="skillInfo('${skill.name}')">
+    ${updateBadge}
     <div class="skill-card-head">
       <span class="skill-card-icon">${skill.icon}</span>
-      <span class="skill-card-version">v${skill.version}</span>
+      <span class="skill-card-version">v${installedVersion || skill.version}${hasUpdate ? ' → v' + latestVersion : ''}</span>
     </div>
     <div class="skill-card-name">${skill.name}</div>
     <div class="skill-card-desc">${skill.description}</div>
@@ -3249,7 +3272,7 @@ async function renderSkills() {
         const installedCards = data.installed.map(s => {
           const all = [...coreSkills, ...extendedSkills];
           const meta = all.find(m => m.name === s.name) || { name: s.name, icon: '📦', description: s.description || s.name };
-          return renderSkillCard({ ...meta, version: s.version || meta.version }, 'installed');
+          return renderSkillCard({ ...meta, version: meta.version || s.version }, 'installed', s.version);
         });
         $('sk-installed-grid').innerHTML = installedCards.join('');
 
