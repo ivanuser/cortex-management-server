@@ -81,9 +81,26 @@ router.post('/logout', authenticate, (req, res) => {
  */
 router.get('/me', authenticate, (req, res) => {
   const user = db.prepare(
-    'SELECT id, username, role, totp_enabled, created_at, last_login FROM users WHERE id = ?'
+    'SELECT id, username, role, totp_enabled, created_at, last_login, display_name, avatar_data FROM users WHERE id = ?'
   ).get(req.user.id);
   res.json(user);
+});
+
+/**
+ * PUT /api/v1/auth/profile — update display name, avatar
+ */
+router.put('/profile', authenticate, (req, res) => {
+  const { display_name, avatar_data } = req.body;
+  
+  if (display_name !== undefined) {
+    db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(display_name, req.user.id);
+  }
+  if (avatar_data !== undefined) {
+    db.prepare('UPDATE users SET avatar_data = ? WHERE id = ?').run(avatar_data, req.user.id);
+  }
+  
+  audit(req.user.id, 'profile_update', 'Profile updated', req.ip);
+  res.json({ message: 'Profile updated' });
 });
 
 /**

@@ -47,7 +47,9 @@ db.exec(`
     totp_enabled INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     last_login TEXT,
-    active INTEGER NOT NULL DEFAULT 1
+    active INTEGER NOT NULL DEFAULT 1,
+    display_name TEXT,
+    avatar_data TEXT
   );
 
   CREATE TABLE IF NOT EXISTS servers (
@@ -195,6 +197,8 @@ const migrations = [
   { table: 'servers', column: 'avatar_data', sql: 'ALTER TABLE servers ADD COLUMN avatar_data TEXT' },
   { table: 'servers', column: 'skills_count', sql: 'ALTER TABLE servers ADD COLUMN skills_count INTEGER DEFAULT 0' },
   { table: 'install_tokens', column: 'config', sql: "ALTER TABLE install_tokens ADD COLUMN config TEXT DEFAULT '{}'" },
+  { table: 'users', column: 'display_name', sql: 'ALTER TABLE users ADD COLUMN display_name TEXT' },
+  { table: 'users', column: 'avatar_data', sql: 'ALTER TABLE users ADD COLUMN avatar_data TEXT' },
 ];
 for (const m of migrations) {
   try {
