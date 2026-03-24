@@ -2302,6 +2302,7 @@ function sendWsConnect(gatewayToken, nonce) {
     minProtocol: 3, maxProtocol: 3,
     client: { id: 'webchat-ui', displayName: 'CortexOS Management', version: '1.0.0', platform: 'web', mode: 'webchat' },
     scopes: ['operator.admin', 'operator.approvals'],
+    caps: ['tool-events'],
     auth: { token: gatewayToken }
   };
   serverWs.send(JSON.stringify({ type: 'req', id: 'connect', method: 'connect', params }));
@@ -2391,6 +2392,29 @@ function handleWsMessage(d) {
     const p = d.payload || d.params || {};
     const st = p.state;
     const m = p.message;
+
+    // Handle tool events (from tool-events capability)
+    if (p.stream === 'tool' && p.data) {
+      const phase = p.data.phase;
+      const toolName = p.data.name || p.data.toolName || 'tool';
+      if (phase === 'start') {
+        // Show tool starting in typing indicator + streaming area
+        const cmd = p.data.input?.command || p.data.input?.path || '';
+        $('typing-el').classList.add('active');
+        $('typing-el').textContent = '🔧 ' + aiName + ' → ' + toolName + (cmd ? ': ' + cmd.substring(0, 60) : '');
+        // Also show in stream
+        const statusText = (wsStreaming || '') + '\n🔧 Running: ' + toolName + (cmd ? ' — `' + cmd.substring(0, 80) + '`' : '') + '\n';
+        wsStreaming = statusText;
+        updateStream(wsStreaming);
+      } else if (phase === 'result') {
+        // Tool finished — show brief result
+        const ok = !p.data.isError;
+        const statusText = (wsStreaming || '') + (ok ? '✅' : '❌') + ' ' + toolName + ' ' + (ok ? 'completed' : 'failed') + '\n';
+        wsStreaming = statusText;
+        updateStream(wsStreaming);
+      }
+      return; // Don't process tool events as regular chat events
+    }
 
     // Cmd-callback interception (for services, docker, logs, network, packages tabs)
     const activeCb = getActiveCmdCallback();
