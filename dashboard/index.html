@@ -606,6 +606,8 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 .skill-card-btn.available:hover { background: var(--accent-strong); box-shadow: 0 2px 8px var(--accent-glow); }
 .skill-card-btn.update { background: var(--yellow-bg); color: var(--yellow); border-color: rgba(254,202,87,0.3); cursor: pointer; }
 .skill-card-btn.update:hover { background: rgba(254,202,87,0.2); box-shadow: 0 2px 8px rgba(254,202,87,0.2); }
+.skill-card.has-update { border-color: rgba(254,202,87,0.3); }
+.skill-card-version.outdated { background: var(--yellow-bg); color: var(--yellow); border-color: rgba(254,202,87,0.3); }
 
 /* ─── Health Page ───────────────────── */
 .info-grid {
@@ -3169,15 +3171,10 @@ function renderSkillCard(skill, status, installedVersion) {
     ? `onclick="event.stopPropagation();installSkill('${skill.name}')"` 
     : '';
 
-  const updateBadge = hasUpdate 
-    ? `<span style="position:absolute;top:-6px;right:-6px;background:var(--yellow);color:#000;font-size:0.55rem;font-weight:700;padding:2px 8px;border-radius:10px;box-shadow:0 2px 6px rgba(254,202,87,0.3);letter-spacing:0.03em">v${latestVersion}</span>` 
-    : '';
-
-  return `<div class="skill-card" style="position:relative" onclick="skillInfo('${skill.name}')">
-    ${updateBadge}
+  return `<div class="skill-card${hasUpdate ? ' has-update' : ''}" onclick="skillInfo('${skill.name}')">
     <div class="skill-card-head">
       <span class="skill-card-icon">${skill.icon}</span>
-      <span class="skill-card-version">${hasUpdate ? 'v' + installedVersion : 'v' + (installedVersion || skill.version)}</span>
+      <span class="skill-card-version${hasUpdate ? ' outdated' : ''}">v${installedVersion || skill.version}</span>
     </div>
     <div class="skill-card-name">${skill.name}</div>
     <div class="skill-card-desc">${skill.description}</div>
