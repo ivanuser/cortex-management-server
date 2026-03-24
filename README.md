@@ -1,4 +1,4 @@
-# CortexOS Management Server
+# CortexOS Management Server v1.0.0
 
 **Fleet management for CortexOS Server instances.**
 
@@ -52,6 +52,17 @@ sudo bash scripts/install-management.sh
 
 - **Fleet Dashboard** — Grid of server cards with live CPU/RAM/disk stats
 - **Embedded Server Management** — Chat, skills, terminal, health for each server — no separate URLs
+- **Real-Time Tool Event Streaming** — See AI tool calls, exec commands, completions live as agents work
+- **Server Groups** — Organize your fleet by project, team, or environment
+- **Agent Update System** — Version tracking, one-click update, fleet-wide update across all servers
+- **57 Skills in Ecosystem** — Core + extended skill packs for every server role
+- **Skills Synced from GitHub Manifest** — Auto-discover new skills as they're published
+- **Skill Detail Modal** — Click any skill to view its full SKILL.md documentation
+- **Skill Update Badges** — Yellow indicator when a newer version is available
+- **Server-Side Chat History** — Persists across devices and sessions
+- **Notification Bell** — Webhook alerts from agents delivered in the dashboard
+- **User Profiles** — Display name, avatar, personalization
+- **Compliance Engine** — NIST 800-53 + CMMC scanning for security posture
 - **Auth + 2FA** — Username/password with optional TOTP (Google Authenticator compatible)
 - **User Roles** — Admin, Operator, Viewer with granular permissions
 - **Server Templates** — Web Server, Database, Docker Host, Full Stack, Monitoring presets
@@ -150,7 +161,7 @@ sudo bash scripts/install-management.sh
 ## Related Repos
 
 - [cortex-server-os](https://github.com/ivanuser/cortex-server-os) — CortexOS Server installer + dashboard
-- [cortex-server-skills](https://github.com/ivanuser/cortex-server-skills) — Extended skill packs (35+)
+- [cortex-server-skills](https://github.com/ivanuser/cortex-server-skills) — Extended skill packs (57 skills in ecosystem)
 
 ## Contributing
 
