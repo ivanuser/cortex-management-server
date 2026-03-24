@@ -131,12 +131,12 @@ app.get('/api/v1/mgmt/version', (_req, res) => {
   }
 });
 
-app.post('/api/v1/mgmt/update', (req, res) => {
+app.post('/api/v1/mgmt/update', async (req, res) => {
   // Check auth
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'Auth required' });
   
-  const { execFile } = require('child_process');
+  const { execFile } = await import('child_process');
   const scriptPath = path.join(__dirname, '..', 'scripts', 'self-update.sh');
   
   console.log('[Self-Update] Triggered by admin');
