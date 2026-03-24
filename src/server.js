@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { URL } from 'url';
@@ -117,6 +118,39 @@ export MGMT_API_KEY="${apiKey}"
     // Fallback: redirect to GitHub raw
     res.redirect(`https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/install.sh`);
   }
+});
+
+// ─── Self-Update ────────────────────────────────────────────
+app.get('/api/v1/mgmt/version', (_req, res) => {
+  try {
+    const versionFile = path.join(__dirname, '..', 'version.json');
+    const version = JSON.parse(fs.readFileSync(versionFile, 'utf8'));
+    res.json(version);
+  } catch {
+    res.json({ version: 'unknown' });
+  }
+});
+
+app.post('/api/v1/mgmt/update', (req, res) => {
+  // Check auth
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Auth required' });
+  
+  const { execFile } = require('child_process');
+  const scriptPath = path.join(__dirname, '..', 'scripts', 'self-update.sh');
+  
+  console.log('[Self-Update] Triggered by admin');
+  
+  execFile('bash', [scriptPath], { timeout: 60000 }, (error, stdout, stderr) => {
+    if (error) {
+      console.error('[Self-Update] Failed:', error.message);
+    } else {
+      console.log('[Self-Update] Success:', stdout);
+    }
+  });
+  
+  // Respond immediately — update runs async
+  res.json({ message: 'Update triggered. Management server will restart shortly.' });
 });
 
 // ─── 404 Handler ────────────────────────────────────────────

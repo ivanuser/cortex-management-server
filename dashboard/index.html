@@ -4158,6 +4158,21 @@ async function renderSettings() {
         </div>
 
         <div class="form-card">
+          <h3>Management Server Update</h3>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+            <div>
+              <div style="font-size:0.8rem;color:var(--text-dim)">Current Version</div>
+              <div id="mgmt-version" style="font-size:1.1rem;font-weight:700">v1.0.0</div>
+            </div>
+            <button class="btn-primary" style="padding:0.5rem 1.25rem" onclick="updateManagement()">🔄 Update Server</button>
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-muted)">
+            Pulls latest code from GitHub, installs dependencies, and restarts the service.
+          </div>
+          <div id="mgmt-update-status" style="margin-top:0.75rem;display:none"></div>
+        </div>
+
+        <div class="form-card">
           <h3>Two-Factor Authentication</h3>
           <p style="color:var(--text-dim);font-size:0.8rem;margin-bottom:1rem">
             ${me.totp_enabled ? '🔐 2FA is <strong style="color:var(--green)">enabled</strong>' : '2FA is <strong>not enabled</strong>'}
@@ -4210,6 +4225,28 @@ async function uploadUserAvatar(input) {
   };
   reader.readAsDataURL(file);
   input.value = '';
+}
+
+async function updateManagement() {
+  if (!confirm('Update the management server? It will pull the latest code and restart. You may lose connection briefly.')) return;
+  const statusEl = $('mgmt-update-status');
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = '<span style="color:var(--yellow)">🔄 Updating... please wait</span>';
+  try {
+    await api('/mgmt/update', { method: 'POST' });
+    statusEl.innerHTML = '<span style="color:var(--green)">✅ Update triggered. Reloading in 10 seconds...</span>';
+    setTimeout(() => location.reload(), 10000);
+  } catch (e) {
+    statusEl.innerHTML = '<span style="color:var(--red)">❌ ' + e.message + '</span>';
+  }
+}
+
+// Fetch management server version on settings load
+async function loadMgmtVersion() {
+  try {
+    const v = await api('/mgmt/version');
+    if (v.version) $('mgmt-version').textContent = 'v' + v.version;
+  } catch {}
 }
 
 async function changePassword() {
