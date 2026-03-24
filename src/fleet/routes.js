@@ -821,10 +821,14 @@ async function sendFleetCommand(server, command) {
     const { WebSocket } = await import('ws');
     const gwUrl = server.gateway_url.replace(/^http/, 'ws').replace(/\/$/, '');
 
-    const ws = new WebSocket(gwUrl);
-    const timeout = setTimeout(() => ws.close(), 15_000);
+    console.log(`[Fleet] Sending command to ${server.name} (${gwUrl}): ${command.substring(0, 60)}...`);
+    const ws = new WebSocket(gwUrl, {
+      headers: { 'Origin': server.gateway_url }
+    });
+    const timeout = setTimeout(() => { console.log(`[Fleet] Timeout for ${server.name}`); ws.close(); }, 15_000);
 
     ws.on('open', () => {
+      console.log(`[Fleet] Connected to ${server.name}`);
       ws.send(JSON.stringify({
         type: 'req', id: 'connect', method: 'connect',
         params: {
@@ -840,6 +844,7 @@ async function sendFleetCommand(server, command) {
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === 'res' && msg.id === 'connect' && msg.ok) {
+          console.log(`[Fleet] Auth OK for ${server.name}, sending command...`);
           ws.send(JSON.stringify({
             type: 'req', method: 'chat.send', id: 'fleet-' + crypto.randomUUID(),
             params: {
@@ -864,7 +869,7 @@ async function sendFleetCommand(server, command) {
       } catch {}
     });
 
-    ws.on('error', () => {});
+    ws.on('error', (err) => { console.error(`[Fleet] WS error for ${server.name}:`, err.message); });
     ws.on('close', () => clearTimeout(timeout));
   } catch (err) {
     console.error(`[Fleet] Failed to send to ${server.name}:`, err.message);
