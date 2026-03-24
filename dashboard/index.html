@@ -3162,7 +3162,7 @@ function renderSkillCard(skill, status, installedVersion) {
   }
 
   const btnClass = hasUpdate ? 'update' : status === 'installed' ? 'installed' : 'available';
-  const btnText = hasUpdate ? '⬆️ Update' : status === 'installed' ? '✓ Installed' : '↓ Install';
+  const btnText = hasUpdate ? '⬆ Update Available' : status === 'installed' ? '✓ Installed' : '↓ Install';
   const btnAction = hasUpdate
     ? `onclick="event.stopPropagation();installSkill('${skill.name}')"` 
     : status === 'available' 
@@ -3170,14 +3170,14 @@ function renderSkillCard(skill, status, installedVersion) {
     : '';
 
   const updateBadge = hasUpdate 
-    ? `<span style="position:absolute;top:8px;right:8px;background:var(--yellow);color:#000;font-size:0.6rem;font-weight:700;padding:2px 6px;border-radius:10px;">UPDATE</span>` 
+    ? `<span style="position:absolute;top:-6px;right:-6px;background:var(--yellow);color:#000;font-size:0.55rem;font-weight:700;padding:2px 8px;border-radius:10px;box-shadow:0 2px 6px rgba(254,202,87,0.3);letter-spacing:0.03em">v${latestVersion}</span>` 
     : '';
 
   return `<div class="skill-card" style="position:relative" onclick="skillInfo('${skill.name}')">
     ${updateBadge}
     <div class="skill-card-head">
       <span class="skill-card-icon">${skill.icon}</span>
-      <span class="skill-card-version">v${installedVersion || skill.version}${hasUpdate ? ' → v' + latestVersion : ''}</span>
+      <span class="skill-card-version">${hasUpdate ? 'v' + installedVersion : 'v' + (installedVersion || skill.version)}</span>
     </div>
     <div class="skill-card-name">${skill.name}</div>
     <div class="skill-card-desc">${skill.description}</div>
