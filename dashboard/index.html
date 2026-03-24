@@ -3067,7 +3067,7 @@ function sendTermCmd() {
     type: 'req', method: 'chat.send', id: 'term-' + (++wsMsgN),
     params: {
       sessionKey: wsSessionKey || 'agent:main:webchat',
-      message: 'Run this command and show me the output: `' + cmd + '`',
+      message: 'Execute this command and respond ONLY with the raw terminal output, nothing else. No explanation, no commentary, just the exact output:\n```\n' + cmd + '\n```',
       idempotencyKey: idk
     }
   }));
