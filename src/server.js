@@ -141,7 +141,7 @@ app.post('/api/v1/mgmt/update', async (req, res) => {
   
   console.log('[Self-Update] Triggered by admin');
   
-  execFile('bash', [scriptPath], { timeout: 60000 }, (error, stdout, stderr) => {
+  execFile('bash', [scriptPath], { timeout: 60000, env: { ...process.env, HOME: '/home/ihoner' } }, (error, stdout, stderr) => {
     if (error) {
       console.error('[Self-Update] Failed:', error.message);
     } else {
