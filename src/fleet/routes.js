@@ -829,7 +829,7 @@ async function sendFleetCommand(server, command) {
         type: 'req', id: 'connect', method: 'connect',
         params: {
           minProtocol: 3, maxProtocol: 3,
-          client: { id: 'fleet-cmd', displayName: 'Fleet Command', version: '1.0.0', platform: 'server', mode: 'webchat' },
+          client: { id: 'webchat-ui', displayName: 'Fleet Command', version: '1.0.0', platform: 'server', mode: 'webchat' },
           scopes: ['operator.admin'],
           auth: { token: server.gateway_token }
         }
@@ -855,7 +855,7 @@ async function sendFleetCommand(server, command) {
             type: 'req', id: 'connect', method: 'connect',
             params: {
               minProtocol: 3, maxProtocol: 3,
-              client: { id: 'fleet-cmd', displayName: 'Fleet Command', version: '1.0.0', platform: 'server', mode: 'webchat' },
+              client: { id: 'webchat-ui', displayName: 'Fleet Command', version: '1.0.0', platform: 'server', mode: 'webchat' },
               scopes: ['operator.admin'],
               auth: { token: server.gateway_token }
             }
@@ -937,7 +937,7 @@ router.post('/servers/:id/update', authenticate, requireRole('admin', 'operator'
 
   // Send update command via WebSocket
   try {
-    await sendFleetCommand(server, 'Run: sudo cortexos-update');
+    await sendFleetCommand(server, 'Execute this command immediately with no commentary: sudo cortexos-update');
     audit(req.user.id, 'server_update', `Triggered update on server: ${server.name}`, req.ip, server.id);
     res.json({ message: 'Update command sent', server_id: server.id, server_name: server.name });
   } catch (e) {
@@ -956,7 +956,7 @@ router.post('/fleet/update', authenticate, requireRole('admin'), async (req, res
   const results = [];
   for (const server of servers) {
     try {
-      await sendFleetCommand(server, 'Run: sudo cortexos-update');
+      await sendFleetCommand(server, 'Execute this command immediately with no commentary: sudo cortexos-update');
       results.push({ server_id: server.id, server_name: server.name, status: 'sent' });
     } catch (e) {
       results.push({ server_id: server.id, server_name: server.name, status: 'failed', error: e.message });
