@@ -1202,6 +1202,18 @@ router.post('/notifications', (req, res) => {
 });
 
 /**
+ * POST /api/v1/notifications/internal — create a notification from the dashboard UI
+ */
+router.post('/notifications/internal', authenticate, (req, res) => {
+  const { message, type = 'info', server_id = null } = req.body;
+  if (!message) return res.status(400).json({ error: 'message required' });
+  const id = crypto.randomUUID();
+  const notifType = ['info', 'warning', 'alert', 'critical'].includes(type) ? type : 'info';
+  db.prepare('INSERT INTO notifications (id, server_id, type, message, read, created_at) VALUES (?,?,?,?,0,?)')
+    .run(id, server_id, notifType, message, new Date().toISOString());
+  res.json({ id, message: 'Notification created' });
+});
+
  * GET /api/v1/notifications — list recent notifications (for dashboard)
  */
 router.get('/notifications', authenticate, (req, res) => {

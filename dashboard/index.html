@@ -3538,8 +3538,10 @@ async function renderFleet() {
         </div>
         <div class="server-card-footer">
           <span class="time">Last seen: ${timeAgo(s.last_seen)}</span>
-          <div style="display:flex;gap:0.5rem">
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
             <button class="btn-ghost" style="font-size:0.7rem;padding:0.3rem 0.6rem" onclick="event.stopPropagation();showAssignGroupsModal('${s.id}','${esc(s.name)}')" title="Assign to groups">📁</button>
+            <button class="btn-ghost" style="font-size:0.7rem;padding:0.3rem 0.6rem" onclick="event.stopPropagation();checkServerUpdate('${s.id}','${esc(s.name)}')" title="Check for updates">🔍</button>
+            ${s.needs_update ? `<button class="btn-primary" style="font-size:0.7rem;padding:0.3rem 0.6rem;background:var(--yellow);color:#000" onclick="event.stopPropagation();triggerServerUpdate('${s.id}')" title="Update now">⬆ Update</button>` : ''}
             <button class="btn-select" onclick="event.stopPropagation();selectServer('${s.id}')">${isSelected ? '✓ Selected' : 'Select'}</button>
             <button class="btn-ghost" style="font-size:0.7rem;padding:0.3rem 0.6rem" onclick="event.stopPropagation();removeServer('${s.id}','${esc(s.name)}')" title="Remove">🗑️</button>
           </div>
@@ -5120,6 +5122,32 @@ async function renderUpdates() {
     el.innerHTML = `
       <div class="section-header"><h2>🔄 <span>Fleet</span> Updates</h2></div>
       <p class="error-msg">${esc(e.message)}</p>`;
+  }
+}
+
+async function addNotification(message, type = 'info') {
+  try {
+    await api('/notifications/internal', { method: 'POST', body: JSON.stringify({ message, type }) });
+    fetchNotifications(); // Refresh the bell
+  } catch(e) {}
+}
+
+async function checkServerUpdate(serverId, serverName) {
+  toast(`🔍 Checking updates for ${serverName}...`);
+  try {
+    const result = await api(`/updates/check`);
+    const server = (result.servers || []).find(s => s.id == serverId);
+    if (!server) { toast(`Could not find ${serverName} in update check`, 'error'); return; }
+    if (server.needs_update) {
+      toast(`⬆ ${serverName} needs update: v${server.current_version} → v${server.latest_version}`, 'warning');
+      // Add notification
+      addNotification(`🔔 Update available for ${serverName}: v${server.current_version} → v${server.latest_version}`, 'warning');
+      renderServers(); // Refresh cards to show update button
+    } else {
+      toast(`✅ ${serverName} is up to date (v${server.current_version})`);
+    }
+  } catch(e) {
+    toast(`Failed to check updates: ${e.message}`, 'error');
   }
 }
 
