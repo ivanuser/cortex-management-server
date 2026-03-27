@@ -1217,7 +1217,7 @@ router.post('/servers/:id/scan-skills', authenticate, async (req, res) => {
 
   const { flags = '' } = req.body;
   const safeFlags = flags.replace(/[^a-z\-\s]/g, ''); // sanitize
-  const command = `Execute immediately with no commentary: mkdir -p /var/lib/cortexos/dashboard; LOG=/var/lib/cortexos/dashboard/skill-scan.log; echo "Installing..." > $LOG; python3 -m pip install cisco-ai-skill-scanner -q --break-system-packages >> $LOG 2>&1; SCANNER=$(find /usr /root ~/.local -name skill-scanner -type f 2>/dev/null | head -1); if [ -z "$SCANNER" ]; then echo "ERROR: skill-scanner not found" >> $LOG; echo '{"error":"install failed","results":[]}' > /var/lib/cortexos/dashboard/skill-scan.json; else echo "Running scan..." >> $LOG; $SCANNER scan-all /var/lib/cortexos/skills --recursive --lenient ${safeFlags} --format json --output /var/lib/cortexos/dashboard/skill-scan.json >> $LOG 2>&1; fi; echo SCAN_COMPLETE >> $LOG`;
+  const command = `Execute immediately with no commentary: mkdir -p /var/lib/cortexos/dashboard; LOG=/var/lib/cortexos/dashboard/skill-scan.log; echo "Setting up venv..." > $LOG; VENV=/var/lib/cortexos/skill-scanner-venv; python3 -m venv $VENV >> $LOG 2>&1; $VENV/bin/pip install cisco-ai-skill-scanner -q >> $LOG 2>&1; SCANNER=$VENV/bin/skill-scanner; if [ ! -f "$SCANNER" ]; then echo "ERROR: skill-scanner not found in venv" >> $LOG; echo '{"error":"install failed","results":[]}' > /var/lib/cortexos/dashboard/skill-scan.json; else echo "Running scan..." >> $LOG; $SCANNER scan-all /var/lib/cortexos/skills --recursive --lenient ${safeFlags} --format json --output /var/lib/cortexos/dashboard/skill-scan.json >> $LOG 2>&1; fi; echo SCAN_COMPLETE >> $LOG`;
 
   // Fire and forget — dashboard polls for results
   try {
