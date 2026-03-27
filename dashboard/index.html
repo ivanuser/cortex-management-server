@@ -3479,10 +3479,7 @@ async function runSkillScan() {
       <div id="scan-live-log" style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-dim);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.75rem;max-height:250px;overflow-y:auto;white-space:pre-wrap"></div>
     </div>`;
 
-  // Send scan command via fleet
-  const flags = scanFlags[scanType];
-  const cmd = `pip install cisco-ai-skill-scanner -q 2>&1 | tail -3; echo "--- Starting ${scanType} scan ---"; skill-scanner scan-all /var/lib/cortexos/skills --recursive --lenient ${flags} --format json --output /var/lib/cortexos/dashboard/skill-scan.json 2>&1 | tee /var/lib/cortexos/dashboard/skill-scan.log; echo SCAN_COMPLETE`;
-
+  // Send scan command via fleet — fire and forget
   try {
     await fetch(`/api/v1/servers/${selectedServer.id}/scan-skills`, {
       method: 'POST',
