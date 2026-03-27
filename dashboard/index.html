@@ -4281,7 +4281,7 @@ async function renderSettings() {
             </div>
             <div style="display:flex;gap:0.5rem">
               <button class="btn-ghost" style="padding:0.5rem 1.25rem" onclick="checkMgmtUpdate()">🔍 Check</button>
-              <button class="btn-primary" style="padding:0.5rem 1.25rem" onclick="updateManagement()">🔄 Update Server</button>
+              <button id="mgmt-update-btn" class="btn-primary" style="padding:0.5rem 1.25rem" onclick="updateManagement()">🔄 Update Server</button>
             </div>
           </div>
           <div style="font-size:0.75rem;color:var(--text-muted)">
@@ -4314,6 +4314,7 @@ async function renderSettings() {
         ${webhooksHtml}
       </div>`;
     loadMgmtVersion(); // Refresh version display after HTML is in DOM
+    checkMgmtUpdate(); // Auto-check for updates
   } catch (e) { el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`; }
 }
 
@@ -4346,22 +4347,36 @@ async function uploadUserAvatar(input) {
   input.value = '';
 }
 
+function semverGt(a, b) {
+  // Returns true if version a > version b
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i]||0) > (pb[i]||0)) return true;
+    if ((pa[i]||0) < (pb[i]||0)) return false;
+  }
+  return false;
+}
+
 async function checkMgmtUpdate() {
   const statusEl = $('mgmt-update-status');
+  const updateBtn = $('mgmt-update-btn');
   statusEl.style.display = 'block';
-  statusEl.innerHTML = '<span style="color:var(--text-dim)">🔍 Checking for updates...</span>';
+  statusEl.innerHTML = '<span style="color:var(--text-dim)">🔍 Checking...</span>';
   try {
     const current = await api('/mgmt/version');
-    const latest = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-management-server/main/version.json')
+    const latest = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-management-server/main/version.json?nocache=' + Date.now())
       .then(r => r.json()).catch(() => null);
     if (!latest) {
-      statusEl.innerHTML = '<span style="color:var(--text-muted)">⚠️ Could not reach GitHub to check latest version.</span>';
+      statusEl.innerHTML = '<span style="color:var(--text-muted)">⚠️ Could not reach GitHub.</span>';
       return;
     }
-    if (latest.version === current.version) {
-      statusEl.innerHTML = `<span style="color:var(--green)">✅ Already up to date (v${current.version})</span>`;
+    if (semverGt(latest.version, current.version)) {
+      statusEl.innerHTML = `<span style="color:var(--yellow)">⬆ Update available: v${current.version} → v${latest.version}</span>`;
+      if (updateBtn) { updateBtn.style.display = 'inline-flex'; updateBtn.style.background = 'var(--yellow)'; updateBtn.style.color = '#000'; }
     } else {
-      statusEl.innerHTML = `<span style="color:var(--yellow)">⬆ Update available: v${current.version} → v${latest.version} (${latest.updated})</span>`;
+      statusEl.innerHTML = `<span style="color:var(--green)">✅ Up to date (v${current.version})</span>`;
+      if (updateBtn) updateBtn.style.background = '';
     }
   } catch(e) {
     statusEl.innerHTML = `<span style="color:var(--red)">❌ Check failed: ${e.message}</span>`;
