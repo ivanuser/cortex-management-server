@@ -3269,6 +3269,7 @@ async function renderSkills() {
       <h2>🧩 <span>Skills</span> — ${esc(selectedServer.name)}</h2>
       <div class="skills-header-actions">
         <button class="btn-skills" onclick="checkSkillUpdates()">🔄 Check Updates</button>
+        <button class="btn-skills" onclick="scanSkillSecurity()" id="scan-skills-btn">🛡️ Security Scan</button>
         <button class="btn-skills primary" onclick="renderSkills()">↻ Refresh</button>
       </div>
     </div>
@@ -3408,6 +3409,117 @@ async function skillInfo(name) {
 function installSkill(name) {
   navigate('chat');
   setTimeout(() => qcmd('Run cortexos-skill install ' + name + ' and confirm it installed'), 100);
+}
+
+async function scanSkillSecurity() {
+  if (!selectedServer) return;
+  const btn = $('scan-skills-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Scanning...';
+
+  // Show scanning modal
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:700px;max-height:80vh;overflow-y:auto">
+      <div class="modal-header">
+        <h3>🛡️ Skill Security Scan — ${esc(selectedServer.name)}</h3>
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+      </div>
+      <div class="modal-body" id="scan-results-body">
+        <div style="text-align:center;padding:2rem;color:var(--text-dim)">
+          <div style="font-size:2rem;margin-bottom:1rem">🔍</div>
+          <div>Installing skill-scanner and running security scan...</div>
+          <div style="font-size:0.8rem;margin-top:0.5rem;color:var(--text-muted)">This may take 30-60 seconds</div>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  try {
+    // Send fleet command to run skill-scanner
+    const scanCmd = `Execute this command immediately with no commentary: pip install cisco-ai-skill-scanner -q 2>/dev/null; skill-scanner scan-all /var/lib/cortexos/skills --recursive --lenient --format json --output /var/lib/cortexos/dashboard/skill-scan.json 2>/dev/null; echo SCAN_DONE`;
+    await api(`/servers/${selectedServer.id}/update`, { method: 'POST', body: JSON.stringify({ command: scanCmd }) })
+      .catch(() => {});
+
+    // Use sendFleetCommand approach via the update endpoint
+    // Actually use a dedicated scan endpoint
+    const res = await fetch(`/api/v1/servers/${selectedServer.id}/scan-skills`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      renderScanResults(data);
+    } else {
+      // Fallback: try polling the proxy
+      await new Promise(r => setTimeout(r, 35000));
+      const scanData = await api(`/servers/${selectedServer.id}/proxy/skill-scan.json`).catch(() => null);
+      renderScanResults(scanData);
+    }
+  } catch(e) {
+    $('scan-results-body').innerHTML = `<div style="color:var(--red);padding:1rem">❌ Scan failed: ${esc(e.message)}</div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🛡️ Security Scan';
+}
+
+function renderScanResults(data) {
+  const body = $('scan-results-body');
+  if (!data || !body) return;
+
+  if (data.error || !data.results) {
+    body.innerHTML = `<div style="color:var(--yellow);padding:1rem">⚠️ ${esc(data?.error || 'No scan results found. Make sure skills are installed on this server.')}</div>`;
+    return;
+  }
+
+  const results = Array.isArray(data.results) ? data.results : Object.entries(data.results).map(([k,v]) => ({skill: k, ...v}));
+  const totalFindings = results.reduce((n, r) => n + (r.findings?.length || 0), 0);
+  const critical = results.filter(r => r.findings?.some(f => f.severity === 'CRITICAL'));
+  const high = results.filter(r => r.findings?.some(f => f.severity === 'HIGH'));
+
+  const severityColor = {'CRITICAL':'var(--red)','HIGH':'var(--red)','MEDIUM':'var(--yellow)','LOW':'var(--text-dim)','INFO':'var(--text-muted)'};
+
+  body.innerHTML = `
+    <div style="display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap">
+      <div class="stat-card-mini" style="flex:1;min-width:100px;text-align:center;padding:0.75rem;background:var(--surface-2);border-radius:8px">
+        <div style="font-size:1.5rem;font-weight:700;color:${totalFindings > 0 ? 'var(--red)' : 'var(--green)'}">${totalFindings}</div>
+        <div style="font-size:0.75rem;color:var(--text-dim)">Total Findings</div>
+      </div>
+      <div class="stat-card-mini" style="flex:1;min-width:100px;text-align:center;padding:0.75rem;background:var(--surface-2);border-radius:8px">
+        <div style="font-size:1.5rem;font-weight:700;color:var(--red)">${critical.length}</div>
+        <div style="font-size:0.75rem;color:var(--text-dim)">Critical Skills</div>
+      </div>
+      <div class="stat-card-mini" style="flex:1;min-width:100px;text-align:center;padding:0.75rem;background:var(--surface-2);border-radius:8px">
+        <div style="font-size:1.5rem;font-weight:700;color:${high.length > 0 ? 'var(--yellow)' : 'var(--green)'}">${high.length}</div>
+        <div style="font-size:0.75rem;color:var(--text-dim)">High Risk Skills</div>
+      </div>
+      <div class="stat-card-mini" style="flex:1;min-width:100px;text-align:center;padding:0.75rem;background:var(--surface-2);border-radius:8px">
+        <div style="font-size:1.5rem;font-weight:700">${results.length}</div>
+        <div style="font-size:0.75rem;color:var(--text-dim)">Skills Scanned</div>
+      </div>
+    </div>
+    ${totalFindings === 0 ? '<div style="text-align:center;padding:2rem;color:var(--green)">✅ No security findings detected across all skills.</div>' : ''}
+    ${results.filter(r => r.findings?.length > 0).map(r => `
+      <div style="margin-bottom:1rem;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <div style="padding:0.75rem 1rem;background:var(--surface-2);display:flex;justify-content:space-between;align-items:center">
+          <strong>📦 ${esc(r.skill || r.name)}</strong>
+          <span style="font-size:0.75rem;color:var(--text-muted)">${r.findings.length} finding${r.findings.length !== 1 ? 's' : ''}</span>
+        </div>
+        ${r.findings.map(f => `
+          <div style="padding:0.75rem 1rem;border-top:1px solid var(--border)">
+            <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.25rem">
+              <span style="font-size:0.7rem;font-weight:700;color:${severityColor[f.severity]||'var(--text-dim)'};background:${severityColor[f.severity]||'var(--text-dim)'}20;padding:0.1rem 0.4rem;border-radius:4px">${esc(f.severity)}</span>
+              <span style="font-size:0.85rem;font-weight:600">${esc(f.rule_id || f.type || 'Finding')}</span>
+            </div>
+            <div style="font-size:0.8rem;color:var(--text-dim)">${esc(f.description || f.message || '')}</div>
+            ${f.location ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem;font-family:'JetBrains Mono',monospace">${esc(f.location)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `).join('')}`;
 }
 
 function checkSkillUpdates() {

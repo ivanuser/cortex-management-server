@@ -1202,6 +1202,44 @@ router.post('/notifications', (req, res) => {
 });
 
 /**
+ * POST /api/v1/servers/:id/scan-skills — trigger skill-scanner on the server and return results
+ */
+router.post('/servers/:id/scan-skills', authenticate, async (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) return res.status(404).json({ error: 'Server not found' });
+  if (!server.gateway_url || !server.gateway_token) return res.status(400).json({ error: 'Server has no gateway configured' });
+
+  const command = 'Execute immediately with no commentary: pip install cisco-ai-skill-scanner -q 2>/dev/null; skill-scanner scan-all /var/lib/cortexos/skills --recursive --lenient --format json --output /var/lib/cortexos/dashboard/skill-scan.json 2>/dev/null && echo SCAN_COMPLETE';
+
+  // Send command via fleet WS
+  try {
+    await sendFleetCommand(server, command);
+    console.log(`[Skill Scan] Command sent to ${server.name}`);
+  } catch(e) {
+    return res.status(500).json({ error: 'Failed to send scan command: ' + e.message });
+  }
+
+  // Poll for results (up to 60s)
+  const proxyUrl = server.gateway_url.replace(/\/+$/, '') + '/skill-scan.json';
+  for (let i = 0; i < 12; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(proxyUrl, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[Skill Scan] Results received from ${server.name}`);
+        return res.json(data);
+      }
+    } catch {}
+  }
+
+  res.status(202).json({ error: 'Scan is taking longer than expected. Check skill-scan.json on the server.' });
+});
+
+/**
  * POST /api/v1/notifications/internal — create a notification from the dashboard UI
  */
 router.post('/notifications/internal', authenticate, (req, res) => {
