@@ -4280,7 +4280,10 @@ async function renderSettings() {
               <div style="font-size:0.8rem;color:var(--text-dim)">Current Version</div>
               <div id="mgmt-version" style="font-size:1.1rem;font-weight:700">v1.0.0</div>
             </div>
-            <button class="btn-primary" style="padding:0.5rem 1.25rem" onclick="updateManagement()">🔄 Update Server</button>
+            <div style="display:flex;gap:0.5rem">
+              <button class="btn-ghost" style="padding:0.5rem 1.25rem" onclick="checkMgmtUpdate()">🔍 Check</button>
+              <button class="btn-primary" style="padding:0.5rem 1.25rem" onclick="updateManagement()">🔄 Update Server</button>
+            </div>
           </div>
           <div style="font-size:0.75rem;color:var(--text-muted)">
             Pulls latest code from GitHub, installs dependencies, and restarts the service.
@@ -4341,6 +4344,28 @@ async function uploadUserAvatar(input) {
   };
   reader.readAsDataURL(file);
   input.value = '';
+}
+
+async function checkMgmtUpdate() {
+  const statusEl = $('mgmt-update-status');
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = '<span style="color:var(--text-dim)">🔍 Checking for updates...</span>';
+  try {
+    const current = await api('/mgmt/version');
+    const latest = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-management-server/main/version.json')
+      .then(r => r.json()).catch(() => null);
+    if (!latest) {
+      statusEl.innerHTML = '<span style="color:var(--text-muted)">⚠️ Could not reach GitHub to check latest version.</span>';
+      return;
+    }
+    if (latest.version === current.version) {
+      statusEl.innerHTML = `<span style="color:var(--green)">✅ Already up to date (v${current.version})</span>`;
+    } else {
+      statusEl.innerHTML = `<span style="color:var(--yellow)">⬆ Update available: v${current.version} → v${latest.version} (${latest.updated})</span>`;
+    }
+  } catch(e) {
+    statusEl.innerHTML = `<span style="color:var(--red)">❌ Check failed: ${e.message}</span>`;
+  }
 }
 
 async function updateManagement() {
