@@ -3528,61 +3528,7 @@ async function runSkillScan() {
   }, 5000);
 }
 
-function _old_scanSkillSecurity_stub() {
-  // replaced by scanSkillSecurity + runSkillScan above
-  if (!selectedServer) return;
-  const btn = $('scan-skills-btn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Scanning...';
 
-  // Show scanning modal
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal" style="max-width:700px;max-height:80vh;overflow-y:auto">
-      <div class="modal-header">
-        <h3>🛡️ Skill Security Scan — ${esc(selectedServer.name)}</h3>
-        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
-      </div>
-      <div class="modal-body" id="scan-results-body">
-        <div style="text-align:center;padding:2rem;color:var(--text-dim)">
-          <div style="font-size:2rem;margin-bottom:1rem">🔍</div>
-          <div>Installing skill-scanner and running security scan...</div>
-          <div style="font-size:0.8rem;margin-top:0.5rem;color:var(--text-muted)">This may take 30-60 seconds</div>
-        </div>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-
-  try {
-    // Send fleet command to run skill-scanner
-    const scanCmd = `Execute this command immediately with no commentary: pip install cisco-ai-skill-scanner -q 2>/dev/null; skill-scanner scan-all /var/lib/cortexos/skills --recursive --lenient --format json --output /var/lib/cortexos/dashboard/skill-scan.json 2>/dev/null; echo SCAN_DONE`;
-    await api(`/servers/${selectedServer.id}/update`, { method: 'POST', body: JSON.stringify({ command: scanCmd }) })
-      .catch(() => {});
-
-    // Use sendFleetCommand approach via the update endpoint
-    // Actually use a dedicated scan endpoint
-    const res = await fetch(`/api/v1/servers/${selectedServer.id}/scan-skills`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      renderScanResults(data);
-    } else {
-      // Fallback: try polling the proxy
-      await new Promise(r => setTimeout(r, 35000));
-      const scanData = await api(`/servers/${selectedServer.id}/proxy/skill-scan.json`).catch(() => null);
-      renderScanResults(scanData);
-    }
-  } catch(e) {
-    $('scan-results-body').innerHTML = `<div style="color:var(--red);padding:1rem">❌ Scan failed: ${esc(e.message)}</div>`;
-  }
-
-  btn.disabled = false;
-  btn.textContent = '🛡️ Security Scan';
-}
 
 function renderScanResults(data) {
   const body = $('scan-results-body');
