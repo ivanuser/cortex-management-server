@@ -3479,67 +3479,26 @@ async function runSkillScan() {
       <div id="scan-live-log" style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-dim);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.75rem;max-height:250px;overflow-y:auto;white-space:pre-wrap"></div>
     </div>`;
 
-  // Send scan command via fleet — fire and forget
+  // Scan runs on management server — awaits result directly
   try {
-    await fetch(`/api/v1/servers/${selectedServer.id}/scan-skills`, {
+    const statusEl = $('scan-status-text');
+    const logEl = $('scan-live-log');
+    if (statusEl) statusEl.textContent = `Scanning ${selectedServer.name}... (~30-90s)`;
+    if (logEl) logEl.textContent = 'Fetching installed skills from agent...\nRunning skill-scanner locally on management server...\nThis avoids installing anything on your agents.';
+
+    const res = await fetch(`/api/v1/servers/${selectedServer.id}/scan-skills`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ flags: scanFlags })
     });
-  } catch {}
-
-  // Poll for live log + results
-  let attempts = 0;
-  const maxAttempts = 120; // 10 minutes max (pip install on Pi can be slow)
-  const logEl = $('scan-live-log');
-  const statusEl = $('scan-status-text');
-
-  const poll = setInterval(async () => {
-    attempts++;
-
-    // Try to get live log (raw text)
-    let logText = '';
-    try {
-      const logRes = await fetch(`/api/v1/servers/${selectedServer.id}/proxy/skill-scan.log`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (logRes.ok) {
-        logText = await logRes.text();
-        if (logEl && logText) {
-          logEl.textContent = logText;
-          logEl.scrollTop = logEl.scrollHeight;
-        }
-      }
-    } catch {}
-
-    // Try to get results
-    try {
-      const scanData = await api(`/servers/${selectedServer.id}/proxy/skill-scan.json?t=${Date.now()}`);
-      if (scanData) {
-        clearInterval(poll);
-        if (statusEl) statusEl.closest('div').remove();
-        renderScanResults(scanData);
-        return;
-      }
-    } catch {}
-
-    // If log says SCAN_COMPLETE but no JSON, show error
-    if (logText.includes('SCAN_COMPLETE')) {
-      clearInterval(poll);
-      if (statusEl) statusEl.closest('div').innerHTML = `<span style="color:var(--yellow)">⚠️ Scan completed but no results file found. Check log above for errors.</span>`;
-    }
-
-    if (statusEl) {
-      if (attempts < 4) statusEl.textContent = 'Installing cisco-ai-skill-scanner...';
-      else if (attempts < 10) statusEl.textContent = `Running ${scanLabel} scan...`;
-      else statusEl.textContent = `Scanning... (${attempts * 5}s elapsed)`;
-    }
-
-    if (attempts >= maxAttempts) {
-      clearInterval(poll);
-      if (statusEl) statusEl.closest('div').innerHTML = `<span style="color:var(--yellow)">⚠️ Scan timed out. The server may still be running — check /var/lib/cortexos/dashboard/skill-scan.json</span>`;
-    }
-  }, 5000);
+    const scanData = await res.json();
+    const spinnerEl = $('scan-results-body')?.querySelector('div:first-child');
+    if (spinnerEl) spinnerEl.remove();
+    renderScanResults(scanData);
+  } catch(e) {
+    const body = $('scan-results-body');
+    if (body) body.innerHTML = `<div style="color:var(--red);padding:1rem">❌ Scan failed: ${e.message}</div>`;
+  }
 }
 
 

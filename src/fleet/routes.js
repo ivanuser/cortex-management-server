@@ -1216,19 +1216,84 @@ router.post('/servers/:id/scan-skills', authenticate, async (req, res) => {
   if (!server.gateway_url || !server.gateway_token) return res.status(400).json({ error: 'Server has no gateway configured' });
 
   const { flags = '' } = req.body;
-  const safeFlags = flags.replace(/[^a-z\-\s]/g, ''); // sanitize
-  const command = `Execute immediately with no commentary: mkdir -p /var/lib/cortexos/dashboard; LOG=/var/lib/cortexos/dashboard/skill-scan.log; echo "Setting up venv..." > $LOG; VENV=/var/lib/cortexos/skill-scanner-venv; python3 -m venv $VENV >> $LOG 2>&1; $VENV/bin/pip install cisco-ai-skill-scanner -q >> $LOG 2>&1; SCANNER=$VENV/bin/skill-scanner; if [ ! -f "$SCANNER" ]; then echo "ERROR: skill-scanner not found in venv" >> $LOG; echo '{"error":"install failed","results":[]}' > /var/lib/cortexos/dashboard/skill-scan.json; else echo "Running scan..." >> $LOG; $SCANNER scan-all /var/lib/cortexos/skills --recursive --lenient ${safeFlags} --format json --output /var/lib/cortexos/dashboard/skill-scan.json >> $LOG 2>&1; fi; echo SCAN_COMPLETE >> $LOG`;
+  const safeFlags = flags.replace(/[^a-z\-\s0-9]/g, '');
 
-  // Fire and forget — dashboard polls for results
-  try {
-    await sendFleetCommand(server, command);
-    console.log(`[Skill Scan] Command sent to ${server.name} (flags: ${safeFlags || 'none'})`);
-  } catch(e) {
-    return res.status(500).json({ error: 'Failed to send scan command: ' + e.message });
+  // Run skill-scanner locally on the management server against the agent's skills
+  // Fetch skills list from agent, then scan locally — avoids pip issues on agents
+  const { execFile } = await import('child_process');
+  const path = await import('path');
+  const fs = await import('fs');
+  const os = await import('os');
+
+  // Find skill-scanner venv
+  const scannerPath = process.env.HOME + '/skill-scanner-venv/bin/skill-scanner';
+  if (!fs.existsSync(scannerPath)) {
+    return res.status(500).json({ error: 'skill-scanner not installed on management server. Run: python3 -m venv ~/skill-scanner-venv && ~/skill-scanner-venv/bin/pip install cisco-ai-skill-scanner' });
   }
 
-  // Respond immediately — dashboard polls
-  res.json({ status: 'started', message: 'Scan command sent. Poll skill-scan.json for results.' });
+  // Fetch skills from agent via proxy
+  const skillsUrl = server.gateway_url.replace(/\/+$/, '') + '/skills.json';
+  let installedSkills = [];
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 5000);
+    const r = await fetch(skillsUrl, { signal: controller.signal });
+    if (r.ok) {
+      const data = await r.json();
+      installedSkills = data.installed || [];
+    }
+  } catch {}
+
+  if (installedSkills.length === 0) {
+    return res.json({ error: 'No skills found on server or could not reach agent', results: [] });
+  }
+
+  // Write a temp skills dir with SKILL.md files fetched from GitHub manifest
+  const tmpDir = fs.mkdtempSync(os.tmpdir() + '/cortex-scan-');
+  let written = 0;
+  for (const skill of installedSkills) {
+    const skillDir = tmpDir + '/' + skill.name;
+    fs.mkdirSync(skillDir, { recursive: true });
+    // Try to fetch SKILL.md from agent proxy
+    try {
+      const skillUrl = server.gateway_url.replace(/\/+$/, '') + '/skills/' + skill.name + '/SKILL.md';
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 3000);
+      const sr = await fetch(skillUrl, { signal: controller.signal });
+      if (sr.ok) {
+        fs.writeFileSync(skillDir + '/SKILL.md', await sr.text());
+        written++;
+        continue;
+      }
+    } catch {}
+    // Fallback: write minimal SKILL.md
+    fs.writeFileSync(skillDir + '/SKILL.md', `# ${skill.name}\n\n${skill.description || skill.name}\n`);
+    written++;
+  }
+
+  console.log(`[Skill Scan] Scanning ${written} skills from ${server.name} locally...`);
+
+  // Run skill-scanner
+  const args = ['scan-all', tmpDir, '--recursive', '--lenient', '--format', 'json'];
+  if (safeFlags) args.push(...safeFlags.split(' ').filter(Boolean));
+
+  execFile(scannerPath, args, { timeout: 120000 }, (err, stdout, stderr) => {
+    // Cleanup temp dir
+    try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
+
+    if (err && !stdout) {
+      console.error('[Skill Scan] Error:', err.message);
+      return res.json({ error: 'Scan failed: ' + err.message, results: [] });
+    }
+
+    try {
+      const result = JSON.parse(stdout || '{}');
+      console.log(`[Skill Scan] Complete for ${server.name}`);
+      res.json(result);
+    } catch {
+      res.json({ error: 'Could not parse scan output', raw: stdout?.substring(0, 500), results: [] });
+    }
+  });
 });
 
 /**
