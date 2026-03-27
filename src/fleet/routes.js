@@ -1217,7 +1217,7 @@ router.post('/servers/:id/scan-skills', authenticate, async (req, res) => {
 
   const { flags = '' } = req.body;
   const safeFlags = flags.replace(/[^a-z\-\s]/g, ''); // sanitize
-  const command = `Execute immediately with no commentary: curl -sfL https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/scripts/install-skill-scanner.sh -o /tmp/skill-scan.sh && chmod +x /tmp/skill-scan.sh && SCAN_FLAGS="${safeFlags}" bash /tmp/skill-scan.sh`;
+  const command = `Execute immediately with no commentary: mkdir -p /var/lib/cortexos/dashboard; LOG=/var/lib/cortexos/dashboard/skill-scan.log; echo "Installing..." > $LOG; python3 -m pip install cisco-ai-skill-scanner -q --break-system-packages >> $LOG 2>&1; SCANNER=$(find /usr /root ~/.local -name skill-scanner -type f 2>/dev/null | head -1); if [ -z "$SCANNER" ]; then echo "ERROR: skill-scanner not found" >> $LOG; echo '{"error":"install failed","results":[]}' > /var/lib/cortexos/dashboard/skill-scan.json; else echo "Running scan..." >> $LOG; $SCANNER scan-all /var/lib/cortexos/skills --recursive --lenient ${safeFlags} --format json --output /var/lib/cortexos/dashboard/skill-scan.json >> $LOG 2>&1; fi; echo SCAN_COMPLETE >> $LOG`;
 
   // Fire and forget — dashboard polls for results
   try {
