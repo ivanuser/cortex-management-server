@@ -3419,12 +3419,12 @@ function scanSkillSecurity() {
   overlay.className = 'modal-overlay';
   overlay.id = 'skill-scan-overlay';
   overlay.innerHTML = `
-    <div class="modal" style="max-width:640px">
+    <div class="modal" style="max-width:640px;max-height:90vh;display:flex;flex-direction:column">
       <div class="modal-header">
         <h3>🛡️ Skill Security Scan — ${esc(selectedServer.name)}</h3>
         <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body" style="overflow-y:auto;flex:1;min-height:0">
         <p style="color:var(--text-dim);margin-bottom:1.25rem;font-size:0.85rem">
           Powered by <strong>Cisco AI Skill Scanner</strong>. Choose a scan type:
         </p>
@@ -3466,12 +3466,13 @@ async function runSkillScan() {
   const overlay = $('skill-scan-overlay');
   if (!overlay) return;
 
+  overlay.querySelector('.modal').style.cssText = 'max-width:760px;width:95vw;max-height:90vh;display:flex;flex-direction:column';
   overlay.querySelector('.modal').innerHTML = `
-    <div class="modal-header">
+    <div class="modal-header" style="flex-shrink:0">
       <h3>🛡️ ${esc(scanLabel)} Scan — ${esc(selectedServer.name)}</h3>
       <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
     </div>
-    <div class="modal-body" id="scan-results-body">
+    <div class="modal-body" id="scan-results-body" style="overflow-y:auto;flex:1;min-height:0">
       <div style="margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem">
         <div class="spinner" style="width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div>
         <span style="color:var(--text-dim);font-size:0.85rem" id="scan-status-text">Installing cisco-ai-skill-scanner...</span>
