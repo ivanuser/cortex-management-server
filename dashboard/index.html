@@ -2024,6 +2024,7 @@ async function showApp() {
 
   navigate('fleet');
   renderFleet();
+  loadMgmtVersion(); // Load version on startup
 
   // Auto-refresh fleet
   if (fleetPollInterval) clearInterval(fleetPollInterval);
@@ -4114,6 +4115,7 @@ async function deleteUser(id, name) {
 // ═══════════════════════════════════════════════════════════
 async function renderSettings() {
   const el = $('settings-content');
+  loadMgmtVersion(); // Always refresh version on settings load
   try {
     const me = await api('/auth/me');
     const webhooksHtml = await renderWebhooksSection();
@@ -4188,7 +4190,7 @@ async function renderSettings() {
         <div class="form-card">
           <h3>Server Info</h3>
           <div style="font-size:0.8rem;color:var(--text-dim);line-height:2.2">
-            <div>Version: <strong style="color:var(--text)">0.5.1</strong></div>
+            <div>Version: <strong style="color:var(--text)" id="server-info-version">...</strong></div>
             <div>User: <strong style="color:var(--text)">${esc(me.username)}</strong></div>
             <div>Role: <strong style="color:var(--text)">${esc(me.role)}</strong></div>
             <div>Created: <strong style="color:var(--text)">${me.created_at}</strong></div>
@@ -4247,7 +4249,11 @@ async function updateManagement() {
 async function loadMgmtVersion() {
   try {
     const v = await api('/mgmt/version');
-    if (v.version) $('mgmt-version').textContent = 'v' + v.version;
+    if (v.version) {
+      $('mgmt-version').textContent = 'v' + v.version;
+      const infoEl = $('server-info-version');
+      if (infoEl) infoEl.textContent = v.version;
+    }
   } catch {}
 }
 
