@@ -1217,7 +1217,7 @@ router.post('/servers/:id/scan-skills', authenticate, async (req, res) => {
 
   const { flags = '' } = req.body;
   const safeFlags = flags.replace(/[^a-z\-\s]/g, ''); // sanitize
-  const command = `Execute immediately with no commentary: mkdir -p /var/lib/cortexos/dashboard; LOG=/var/lib/cortexos/dashboard/skill-scan.log; echo "Installing python3-pip and cisco-ai-skill-scanner..." | tee $LOG; apt-get install -y python3-pip 2>&1 | grep -E "install|already|error" | tee -a $LOG; pip3 install cisco-ai-skill-scanner -q 2>&1 | tail -5 | tee -a $LOG; SCANNER=$(which skill-scanner 2>/dev/null || python3 -c "import site; print(site.getusersitepackages())" 2>/dev/null | sed 's|/lib/python.*/site-packages|/bin|'/skill-scanner); if [ ! -f "$SCANNER" ]; then SCANNER=/usr/local/bin/skill-scanner; fi; if [ ! -f "$SCANNER" ]; then echo "ERROR: skill-scanner not found" | tee -a $LOG; echo '{"error":"skill-scanner not found","results":[]}' > /var/lib/cortexos/dashboard/skill-scan.json; else echo "Running scan..." | tee -a $LOG; $SCANNER scan-all /var/lib/cortexos/skills --recursive --lenient ${safeFlags} --format json --output /var/lib/cortexos/dashboard/skill-scan.json 2>&1 | tee -a $LOG; fi; echo SCAN_COMPLETE | tee -a $LOG`;
+  const command = `Execute immediately with no commentary: curl -sfL https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/scripts/install-skill-scanner.sh -o /tmp/skill-scan.sh && chmod +x /tmp/skill-scan.sh && SCAN_FLAGS="${safeFlags}" bash /tmp/skill-scan.sh`;
 
   // Fire and forget — dashboard polls for results
   try {
