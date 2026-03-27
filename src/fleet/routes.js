@@ -1217,7 +1217,7 @@ router.post('/servers/:id/scan-skills', authenticate, async (req, res) => {
 
   const { flags = '' } = req.body;
   const safeFlags = flags.replace(/[^a-z\-\s]/g, ''); // sanitize
-  const command = `Execute immediately with no commentary, run in background with nohup: mkdir -p /var/lib/cortexos/dashboard; pip install cisco-ai-skill-scanner -q 2>&1 | tail -3 | tee -a /var/lib/cortexos/dashboard/skill-scan.log; skill-scanner scan-all /var/lib/cortexos/skills --recursive --lenient ${safeFlags} --format json --output /var/lib/cortexos/dashboard/skill-scan.json 2>&1 | tee -a /var/lib/cortexos/dashboard/skill-scan.log; echo SCAN_COMPLETE >> /var/lib/cortexos/dashboard/skill-scan.log`;
+  const command = `Execute immediately with no commentary: mkdir -p /var/lib/cortexos/dashboard; LOG=/var/lib/cortexos/dashboard/skill-scan.log; echo "Installing cisco-ai-skill-scanner..." | tee $LOG; python3 -m pip install cisco-ai-skill-scanner -q --break-system-packages 2>&1 | tail -5 | tee -a $LOG; SCANNER=$(python3 -m site --user-base 2>/dev/null)/bin/skill-scanner; if [ ! -f "$SCANNER" ]; then SCANNER=$(which skill-scanner 2>/dev/null || echo ""); fi; if [ -z "$SCANNER" ]; then echo "ERROR: skill-scanner not found after install" | tee -a $LOG; else echo "Running scan..." | tee -a $LOG; $SCANNER scan-all /var/lib/cortexos/skills --recursive --lenient ${safeFlags} --format json --output /var/lib/cortexos/dashboard/skill-scan.json 2>&1 | tee -a $LOG; fi; echo SCAN_COMPLETE | tee -a $LOG`;
 
   // Fire and forget — dashboard polls for results
   try {
