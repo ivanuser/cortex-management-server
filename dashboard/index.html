@@ -3498,12 +3498,13 @@ async function runSkillScan() {
     attempts++;
 
     // Try to get live log (raw text)
+    let logText = '';
     try {
       const logRes = await fetch(`/api/v1/servers/${selectedServer.id}/proxy/skill-scan.log`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (logRes.ok) {
-        const logText = await logRes.text();
+        logText = await logRes.text();
         if (logEl && logText) {
           logEl.textContent = logText;
           logEl.scrollTop = logEl.scrollHeight;
@@ -3514,13 +3515,19 @@ async function runSkillScan() {
     // Try to get results
     try {
       const scanData = await api(`/servers/${selectedServer.id}/proxy/skill-scan.json`);
-      if (scanData && !scanData.error) {
+      if (scanData) {
         clearInterval(poll);
         if (statusEl) statusEl.closest('div').remove();
         renderScanResults(scanData);
         return;
       }
     } catch {}
+
+    // If log says SCAN_COMPLETE but no JSON, show error
+    if (logText.includes('SCAN_COMPLETE')) {
+      clearInterval(poll);
+      if (statusEl) statusEl.closest('div').innerHTML = `<span style="color:var(--yellow)">⚠️ Scan completed but no results file found. Check log above for errors.</span>`;
+    }
 
     if (statusEl) {
       if (attempts < 4) statusEl.textContent = 'Installing cisco-ai-skill-scanner...';
