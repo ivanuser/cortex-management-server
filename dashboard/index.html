@@ -4227,7 +4227,6 @@ async function deleteUser(id, name) {
 // ═══════════════════════════════════════════════════════════
 async function renderSettings() {
   const el = $('settings-content');
-  loadMgmtVersion(); // Always refresh version on settings load
   try {
     const me = await api('/auth/me');
     const webhooksHtml = await renderWebhooksSection();
@@ -4314,6 +4313,7 @@ async function renderSettings() {
 
         ${webhooksHtml}
       </div>`;
+    loadMgmtVersion(); // Refresh version display after HTML is in DOM
   } catch (e) { el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`; }
 }
 
