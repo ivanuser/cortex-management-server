@@ -3514,7 +3514,7 @@ async function runSkillScan() {
 
     // Try to get results
     try {
-      const scanData = await api(`/servers/${selectedServer.id}/proxy/skill-scan.json`);
+      const scanData = await api(`/servers/${selectedServer.id}/proxy/skill-scan.json?t=${Date.now()}`);
       if (scanData) {
         clearInterval(poll);
         if (statusEl) statusEl.closest('div').remove();
