@@ -3446,7 +3446,7 @@ async function scanSkillSecurity() {
     // Actually use a dedicated scan endpoint
     const res = await fetch(`/api/v1/servers/${selectedServer.id}/scan-skills`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
     });
 
     if (res.ok) {
