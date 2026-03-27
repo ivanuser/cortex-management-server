@@ -1214,6 +1214,7 @@ router.post('/notifications/internal', authenticate, (req, res) => {
   res.json({ id, message: 'Notification created' });
 });
 
+/**
  * GET /api/v1/notifications — list recent notifications (for dashboard)
  */
 router.get('/notifications', authenticate, (req, res) => {
