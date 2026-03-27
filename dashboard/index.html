@@ -3411,7 +3411,133 @@ function installSkill(name) {
   setTimeout(() => qcmd('Run cortexos-skill install ' + name + ' and confirm it installed'), 100);
 }
 
-async function scanSkillSecurity() {
+function scanSkillSecurity() {
+  if (!selectedServer) return;
+
+  // Show scan type picker first
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'skill-scan-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:640px">
+      <div class="modal-header">
+        <h3>🛡️ Skill Security Scan — ${esc(selectedServer.name)}</h3>
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-dim);margin-bottom:1.25rem;font-size:0.85rem">
+          Powered by <strong>Cisco AI Skill Scanner</strong>. Choose a scan type:
+        </p>
+        <div style="display:flex;flex-direction:column;gap:0.75rem;margin-bottom:1.5rem">
+          <label style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.9rem;border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color 0.2s" onclick="document.getElementById('scan-type-quick').checked=true;document.querySelectorAll('.scan-type-opt').forEach(e=>e.style.borderColor='var(--border)');this.style.borderColor='var(--accent)'">
+            <input type="radio" id="scan-type-quick" name="scan-type" value="quick" class="scan-type-opt" checked style="margin-top:2px">
+            <div>
+              <div style="font-weight:600">⚡ Quick Scan <span style="font-size:0.7rem;color:var(--green);font-weight:400">~10s · No API key needed</span></div>
+              <div style="font-size:0.78rem;color:var(--text-dim);margin-top:0.2rem">Static YAML/YARA pattern matching + bytecode verification. Fast, no dependencies.</div>
+            </div>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.9rem;border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color 0.2s" onclick="document.getElementById('scan-type-behavioral').checked=true;document.querySelectorAll('.scan-type-opt').forEach(e=>e.style.borderColor='var(--border)');this.style.borderColor='var(--accent)'">
+            <input type="radio" id="scan-type-behavioral" name="scan-type" value="behavioral" class="scan-type-opt" style="margin-top:2px">
+            <div>
+              <div style="font-weight:600">🔬 Behavioral Scan <span style="font-size:0.7rem;color:var(--yellow);font-weight:400">~30s · No API key needed</span></div>
+              <div style="font-size:0.78rem;color:var(--text-dim);margin-top:0.2rem">Static + AST dataflow analysis. Traces taint flows, detects command injection and exfiltration paths.</div>
+            </div>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.9rem;border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color 0.2s" onclick="document.getElementById('scan-type-deep').checked=true;document.querySelectorAll('.scan-type-opt').forEach(e=>e.style.borderColor='var(--border)');this.style.borderColor='var(--accent)'">
+            <input type="radio" id="scan-type-deep" name="scan-type" value="deep" class="scan-type-opt" style="margin-top:2px">
+            <div>
+              <div style="font-weight:600">🧠 Deep Scan (LLM) <span style="font-size:0.7rem;color:var(--accent-light);font-weight:400">~60-90s · Uses Claude API key</span></div>
+              <div style="font-size:0.78rem;color:var(--text-dim);margin-top:0.2rem">Static + Behavioral + LLM semantic analysis. Best coverage. Requires SKILL_SCANNER_LLM_API_KEY on the server.</div>
+            </div>
+          </label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:0.75rem">
+          <button class="btn-ghost" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+          <button class="btn-primary" onclick="runSkillScan()">🚀 Start Scan</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function runSkillScan() {
+  const scanType = document.querySelector('input[name="scan-type"]:checked')?.value || 'quick';
+  const overlay = $('skill-scan-overlay');
+  if (!overlay) return;
+
+  const scanTypeLabels = { quick: '⚡ Quick', behavioral: '🔬 Behavioral', deep: '🧠 Deep (LLM)' };
+  const scanFlags = {
+    quick: '',
+    behavioral: '--use-behavioral',
+    deep: '--use-behavioral --use-llm'
+  };
+
+  overlay.querySelector('.modal').innerHTML = `
+    <div class="modal-header">
+      <h3>🛡️ ${scanTypeLabels[scanType]} Scan — ${esc(selectedServer.name)}</h3>
+      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+    </div>
+    <div class="modal-body" id="scan-results-body">
+      <div style="margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem">
+        <div class="spinner" style="width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div>
+        <span style="color:var(--text-dim);font-size:0.85rem" id="scan-status-text">Installing cisco-ai-skill-scanner...</span>
+      </div>
+      <div id="scan-live-log" style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-dim);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.75rem;max-height:250px;overflow-y:auto;white-space:pre-wrap"></div>
+    </div>`;
+
+  // Send scan command via fleet
+  const flags = scanFlags[scanType];
+  const cmd = `pip install cisco-ai-skill-scanner -q 2>&1 | tail -3; echo "--- Starting ${scanType} scan ---"; skill-scanner scan-all /var/lib/cortexos/skills --recursive --lenient ${flags} --format json --output /var/lib/cortexos/dashboard/skill-scan.json 2>&1 | tee /var/lib/cortexos/dashboard/skill-scan.log; echo SCAN_COMPLETE`;
+
+  try {
+    await fetch(`/api/v1/servers/${selectedServer.id}/scan-skills`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scanType, flags })
+    });
+  } catch {}
+
+  // Poll for live log + results
+  let attempts = 0;
+  const maxAttempts = 36; // 3 minutes max
+  const logEl = $('scan-live-log');
+  const statusEl = $('scan-status-text');
+
+  const poll = setInterval(async () => {
+    attempts++;
+
+    // Try to get live log
+    try {
+      const logData = await api(`/servers/${selectedServer.id}/proxy/skill-scan.log`);
+      if (logEl && typeof logData === 'string') logEl.textContent = logData;
+    } catch {}
+
+    // Try to get results
+    try {
+      const scanData = await api(`/servers/${selectedServer.id}/proxy/skill-scan.json`);
+      if (scanData && !scanData.error) {
+        clearInterval(poll);
+        if (statusEl) statusEl.closest('div').remove();
+        renderScanResults(scanData);
+        return;
+      }
+    } catch {}
+
+    if (statusEl) {
+      if (attempts < 4) statusEl.textContent = 'Installing cisco-ai-skill-scanner...';
+      else if (attempts < 10) statusEl.textContent = `Running ${scanTypeLabels[scanType]} scan...`;
+      else statusEl.textContent = `Scanning... (${attempts * 5}s elapsed)`;
+    }
+
+    if (attempts >= maxAttempts) {
+      clearInterval(poll);
+      if (statusEl) statusEl.closest('div').innerHTML = `<span style="color:var(--yellow)">⚠️ Scan timed out. The server may still be running — check /var/lib/cortexos/dashboard/skill-scan.json</span>`;
+    }
+  }, 5000);
+}
+
+function _old_scanSkillSecurity_stub() {
+  // replaced by scanSkillSecurity + runSkillScan above
   if (!selectedServer) return;
   const btn = $('scan-skills-btn');
   btn.disabled = true;

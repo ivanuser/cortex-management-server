@@ -360,8 +360,14 @@ router.get('/servers/:id/proxy/:file', authenticate, async (req, res) => {
     const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
     if (!response.ok) return res.status(response.status).json({ error: 'Upstream error' });
-    const data = await response.json();
-    res.json(data);
+    // Return text for .log files, JSON for everything else
+    if (req.params.file.endsWith('.log')) {
+      const text = await response.text();
+      res.type('text/plain').send(text);
+    } else {
+      const data = await response.json();
+      res.json(data);
+    }
   } catch (err) {
     res.status(502).json({ error: 'Failed to reach server: ' + err.message });
   }
@@ -1209,34 +1215,20 @@ router.post('/servers/:id/scan-skills', authenticate, async (req, res) => {
   if (!server) return res.status(404).json({ error: 'Server not found' });
   if (!server.gateway_url || !server.gateway_token) return res.status(400).json({ error: 'Server has no gateway configured' });
 
-  const command = 'Execute immediately with no commentary: pip install cisco-ai-skill-scanner -q 2>/dev/null; skill-scanner scan-all /var/lib/cortexos/skills --recursive --lenient --format json --output /var/lib/cortexos/dashboard/skill-scan.json 2>/dev/null && echo SCAN_COMPLETE';
+  const { flags = '' } = req.body;
+  const safeFlags = flags.replace(/[^a-z\-\s]/g, ''); // sanitize
+  const command = `Execute immediately with no commentary, run in background with nohup: mkdir -p /var/lib/cortexos/dashboard; pip install cisco-ai-skill-scanner -q 2>&1 | tail -3 | tee -a /var/lib/cortexos/dashboard/skill-scan.log; skill-scanner scan-all /var/lib/cortexos/skills --recursive --lenient ${safeFlags} --format json --output /var/lib/cortexos/dashboard/skill-scan.json 2>&1 | tee -a /var/lib/cortexos/dashboard/skill-scan.log; echo SCAN_COMPLETE >> /var/lib/cortexos/dashboard/skill-scan.log`;
 
-  // Send command via fleet WS
+  // Fire and forget — dashboard polls for results
   try {
     await sendFleetCommand(server, command);
-    console.log(`[Skill Scan] Command sent to ${server.name}`);
+    console.log(`[Skill Scan] Command sent to ${server.name} (flags: ${safeFlags || 'none'})`);
   } catch(e) {
     return res.status(500).json({ error: 'Failed to send scan command: ' + e.message });
   }
 
-  // Poll for results (up to 60s)
-  const proxyUrl = server.gateway_url.replace(/\/+$/, '') + '/skill-scan.json';
-  for (let i = 0; i < 12; i++) {
-    await new Promise(r => setTimeout(r, 5000));
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      const response = await fetch(proxyUrl, { signal: controller.signal });
-      clearTimeout(timeout);
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`[Skill Scan] Results received from ${server.name}`);
-        return res.json(data);
-      }
-    } catch {}
-  }
-
-  res.status(202).json({ error: 'Scan is taking longer than expected. Check skill-scan.json on the server.' });
+  // Respond immediately — dashboard polls
+  res.json({ status: 'started', message: 'Scan command sent. Poll skill-scan.json for results.' });
 });
 
 /**
