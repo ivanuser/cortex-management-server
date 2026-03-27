@@ -3460,7 +3460,9 @@ function scanSkillSecurity() {
 async function runSkillScan() {
   const selected = document.querySelector('input[name="scan-type"]:checked');
   const scanFlags = selected?.value || '';
-  const scanLabel = selected?.closest('label')?.querySelector('div>div')?.textContent?.trim() || '⚡ Quick';
+  // Get just the first text node (icon + label name, not the badge span)
+  const labelDiv = selected?.closest('label')?.querySelector('div>div');
+  const scanLabel = labelDiv ? (labelDiv.childNodes[0]?.textContent?.trim() || labelDiv.textContent?.split('\n')[0]?.trim() || '⚡ Quick') : '⚡ Quick';
   const overlay = $('skill-scan-overlay');
   if (!overlay) return;
 
@@ -3491,17 +3493,25 @@ async function runSkillScan() {
 
   // Poll for live log + results
   let attempts = 0;
-  const maxAttempts = 36; // 3 minutes max
+  const maxAttempts = 120; // 10 minutes max (pip install on Pi can be slow)
   const logEl = $('scan-live-log');
   const statusEl = $('scan-status-text');
 
   const poll = setInterval(async () => {
     attempts++;
 
-    // Try to get live log
+    // Try to get live log (raw text)
     try {
-      const logData = await api(`/servers/${selectedServer.id}/proxy/skill-scan.log`);
-      if (logEl && typeof logData === 'string') logEl.textContent = logData;
+      const logRes = await fetch(`/api/v1/servers/${selectedServer.id}/proxy/skill-scan.log`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (logRes.ok) {
+        const logText = await logRes.text();
+        if (logEl && logText) {
+          logEl.textContent = logText;
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      }
     } catch {}
 
     // Try to get results
