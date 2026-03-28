@@ -307,7 +307,7 @@ router.post('/servers/:id/memory/export', authenticate, async (req, res) => {
   if (!server) return res.status(404).json({ error: 'Server not found' });
   if (!server.gateway_url || !server.gateway_token) return res.status(400).json({ error: 'Server has no gateway configured' });
 
-  const command = 'Execute immediately with no commentary: sudo cortexos-memory-export';
+  const command = 'Execute immediately with no commentary: sudo cortexos-memory-export 2>/dev/null || sudo bash <(curl -sfL https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/scripts/cortexos-memory-export.sh)';
   try {
     await sendFleetCommand(server, command);
     console.log(`[Memory] Export triggered on ${server.name}`);
