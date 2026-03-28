@@ -241,6 +241,180 @@ router.get('/servers', authenticate, (req, res) => {
 /**
  * GET /api/v1/servers/:id — server detail
  */
+/**
+ * GET /api/v1/servers/:id/memory — fetch memory.json from agent, cache in DB
+ */
+router.get('/servers/:id/memory', authenticate, async (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) return res.status(404).json({ error: 'Server not found' });
+  if (!server.gateway_url) return res.status(400).json({ error: 'Server has no gateway configured' });
+
+  const url = server.gateway_url.replace(/\/+$/, '') + '/memory.json';
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return res.status(response.status).json({ error: 'Failed to fetch memory from agent' });
+
+    const data = await response.json();
+
+    // Store backup in DB
+    try {
+      const snapId = crypto.randomUUID();
+      db.prepare(
+        'INSERT INTO memory_snapshots (id, server_id, snapshot_json, created_at) VALUES (?, ?, ?, datetime(\'now\'))'
+      ).run(snapId, server.id, JSON.stringify(data));
+    } catch (e) {
+      console.error('[Memory] Failed to cache snapshot:', e.message);
+    }
+
+    res.json(data);
+  } catch (err) {
+    // Fallback: try to return the latest cached snapshot
+    const cached = db.prepare(
+      'SELECT snapshot_json FROM memory_snapshots WHERE server_id = ? ORDER BY created_at DESC LIMIT 1'
+    ).get(server.id);
+    if (cached) {
+      try {
+        const data = JSON.parse(cached.snapshot_json);
+        data._cached = true;
+        return res.json(data);
+      } catch {}
+    }
+    res.status(502).json({ error: 'Failed to reach agent: ' + err.message });
+  }
+});
+
+/**
+ * POST /api/v1/servers/:id/memory/export — trigger memory export on agent
+ */
+router.post('/servers/:id/memory/export', authenticate, async (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) return res.status(404).json({ error: 'Server not found' });
+  if (!server.gateway_url || !server.gateway_token) return res.status(400).json({ error: 'Server has no gateway configured' });
+
+  const command = 'Execute immediately with no commentary: sudo cortexos-memory-export';
+  try {
+    await sendFleetCommand(server, command);
+    console.log(`[Memory] Export triggered on ${server.name}`);
+    res.json({ status: 'started' });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to send export command: ' + e.message });
+  }
+});
+
+/**
+ * GET /api/v1/memory/search?q=term — search across all agents' memory snapshots
+ */
+router.get('/memory/search', authenticate, (req, res) => {
+  const q = req.query.q;
+  if (!q || q.trim().length === 0) return res.status(400).json({ error: 'Search query required' });
+
+  const searchTerm = '%' + q.trim() + '%';
+
+  // Get latest snapshot per server
+  const snapshots = db.prepare(`
+    SELECT ms.server_id, ms.snapshot_json, ms.created_at, s.name as server_name
+    FROM memory_snapshots ms
+    JOIN servers s ON s.id = ms.server_id
+    WHERE ms.id IN (
+      SELECT id FROM memory_snapshots m2
+      WHERE m2.server_id = ms.server_id
+      ORDER BY m2.created_at DESC
+      LIMIT 1
+    )
+    AND ms.snapshot_json LIKE ?
+  `).all(searchTerm);
+
+  const results = [];
+  for (const snap of snapshots) {
+    try {
+      const data = JSON.parse(snap.snapshot_json);
+      if (!data.entries) continue;
+      for (const entry of data.entries) {
+        const content = entry.content || '';
+        const title = entry.title || '';
+        if (content.toLowerCase().includes(q.toLowerCase()) || title.toLowerCase().includes(q.toLowerCase())) {
+          results.push({
+            server_id: snap.server_id,
+            server_name: snap.server_name,
+            category: entry.category,
+            title: entry.title,
+            date: entry.date,
+            snippet: content.substring(0, 200),
+            entry_id: entry.id
+          });
+        }
+      }
+    } catch {}
+  }
+
+  res.json({ query: q, results, total: results.length });
+});
+
+/**
+ * POST /api/v1/notifications/internal — create a notification from the dashboard UI
+ */
+router.post('/notifications/internal', authenticate, (req, res) => {
+  const { message, type = 'info', server_id = null } = req.body;
+  if (!message) return res.status(400).json({ error: 'message required' });
+  const id = crypto.randomUUID();
+  const notifType = ['info', 'warning', 'alert', 'critical'].includes(type) ? type : 'info';
+  db.prepare('INSERT INTO notifications (id, server_id, type, message, read, created_at) VALUES (?,?,?,?,0,?)')
+    .run(id, server_id, notifType, message, new Date().toISOString());
+  res.json({ id, message: 'Notification created' });
+});
+
+/**
+ * GET /api/v1/notifications — list recent notifications (for dashboard)
+ */
+router.get('/notifications', authenticate, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const unreadOnly = req.query.unread === 'true';
+
+  let where = '';
+  if (unreadOnly) where = 'WHERE n.read = 0';
+
+  const notifications = db.prepare(`
+    SELECT n.*, s.name AS server_name
+    FROM notifications n
+    LEFT JOIN servers s ON s.id = n.server_id
+    ${where}
+    ORDER BY n.created_at DESC
+    LIMIT ?
+  `).all(limit);
+
+  const unreadCount = db.prepare('SELECT COUNT(*) as count FROM notifications WHERE read = 0').get();
+
+  res.json({ notifications, unread_count: unreadCount.count });
+});
+
+/**
+ * PUT /api/v1/notifications/:id/read — mark a single notification as read
+ */
+router.put('/notifications/:id/read', authenticate, (req, res) => {
+  const notif = db.prepare('SELECT id FROM notifications WHERE id = ?').get(req.params.id);
+  if (!notif) return res.status(404).json({ error: 'Notification not found' });
+
+  db.prepare('UPDATE notifications SET read = 1 WHERE id = ?').run(req.params.id);
+  res.json({ message: 'Notification marked as read' });
+});
+
+/**
+ * PUT /api/v1/notifications/read-all — mark all notifications as read
+ */
+router.put('/notifications/read-all', authenticate, (req, res) => {
+  db.prepare('UPDATE notifications SET read = 1 WHERE read = 0').run();
+  res.json({ message: 'All notifications marked as read' });
+});
+
+// ─── Chat History ───────────────────────────────────────────
+
+/**
+ * GET /api/v1/servers/:id/chat — get chat history for a server
+ */
+
 router.get('/servers/:id', authenticate, (req, res) => {
   const server = db.prepare(`
     SELECT s.*,
@@ -1334,179 +1508,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_memory_snapshots_server ON memory_snapshots(server_id);
 `);
 
-/**
- * GET /api/v1/servers/:id/memory — fetch memory.json from agent, cache in DB
- */
-router.get('/servers/:id/memory', authenticate, async (req, res) => {
-  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
-  if (!server) return res.status(404).json({ error: 'Server not found' });
-  if (!server.gateway_url) return res.status(400).json({ error: 'Server has no gateway configured' });
-
-  const url = server.gateway_url.replace(/\/+$/, '') + '/memory.json';
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    const response = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
-    if (!response.ok) return res.status(response.status).json({ error: 'Failed to fetch memory from agent' });
-
-    const data = await response.json();
-
-    // Store backup in DB
-    try {
-      const snapId = crypto.randomUUID();
-      db.prepare(
-        'INSERT INTO memory_snapshots (id, server_id, snapshot_json, created_at) VALUES (?, ?, ?, datetime(\'now\'))'
-      ).run(snapId, server.id, JSON.stringify(data));
-    } catch (e) {
-      console.error('[Memory] Failed to cache snapshot:', e.message);
-    }
-
-    res.json(data);
-  } catch (err) {
-    // Fallback: try to return the latest cached snapshot
-    const cached = db.prepare(
-      'SELECT snapshot_json FROM memory_snapshots WHERE server_id = ? ORDER BY created_at DESC LIMIT 1'
-    ).get(server.id);
-    if (cached) {
-      try {
-        const data = JSON.parse(cached.snapshot_json);
-        data._cached = true;
-        return res.json(data);
-      } catch {}
-    }
-    res.status(502).json({ error: 'Failed to reach agent: ' + err.message });
-  }
-});
-
-/**
- * POST /api/v1/servers/:id/memory/export — trigger memory export on agent
- */
-router.post('/servers/:id/memory/export', authenticate, async (req, res) => {
-  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
-  if (!server) return res.status(404).json({ error: 'Server not found' });
-  if (!server.gateway_url || !server.gateway_token) return res.status(400).json({ error: 'Server has no gateway configured' });
-
-  const command = 'Execute immediately with no commentary: sudo cortexos-memory-export';
-  try {
-    await sendFleetCommand(server, command);
-    console.log(`[Memory] Export triggered on ${server.name}`);
-    res.json({ status: 'started' });
-  } catch (e) {
-    res.status(500).json({ error: 'Failed to send export command: ' + e.message });
-  }
-});
-
-/**
- * GET /api/v1/memory/search?q=term — search across all agents' memory snapshots
- */
-router.get('/memory/search', authenticate, (req, res) => {
-  const q = req.query.q;
-  if (!q || q.trim().length === 0) return res.status(400).json({ error: 'Search query required' });
-
-  const searchTerm = '%' + q.trim() + '%';
-
-  // Get latest snapshot per server
-  const snapshots = db.prepare(`
-    SELECT ms.server_id, ms.snapshot_json, ms.created_at, s.name as server_name
-    FROM memory_snapshots ms
-    JOIN servers s ON s.id = ms.server_id
-    WHERE ms.id IN (
-      SELECT id FROM memory_snapshots m2
-      WHERE m2.server_id = ms.server_id
-      ORDER BY m2.created_at DESC
-      LIMIT 1
-    )
-    AND ms.snapshot_json LIKE ?
-  `).all(searchTerm);
-
-  const results = [];
-  for (const snap of snapshots) {
-    try {
-      const data = JSON.parse(snap.snapshot_json);
-      if (!data.entries) continue;
-      for (const entry of data.entries) {
-        const content = entry.content || '';
-        const title = entry.title || '';
-        if (content.toLowerCase().includes(q.toLowerCase()) || title.toLowerCase().includes(q.toLowerCase())) {
-          results.push({
-            server_id: snap.server_id,
-            server_name: snap.server_name,
-            category: entry.category,
-            title: entry.title,
-            date: entry.date,
-            snippet: content.substring(0, 200),
-            entry_id: entry.id
-          });
-        }
-      }
-    } catch {}
-  }
-
-  res.json({ query: q, results, total: results.length });
-});
-
-/**
- * POST /api/v1/notifications/internal — create a notification from the dashboard UI
- */
-router.post('/notifications/internal', authenticate, (req, res) => {
-  const { message, type = 'info', server_id = null } = req.body;
-  if (!message) return res.status(400).json({ error: 'message required' });
-  const id = crypto.randomUUID();
-  const notifType = ['info', 'warning', 'alert', 'critical'].includes(type) ? type : 'info';
-  db.prepare('INSERT INTO notifications (id, server_id, type, message, read, created_at) VALUES (?,?,?,?,0,?)')
-    .run(id, server_id, notifType, message, new Date().toISOString());
-  res.json({ id, message: 'Notification created' });
-});
-
-/**
- * GET /api/v1/notifications — list recent notifications (for dashboard)
- */
-router.get('/notifications', authenticate, (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-  const unreadOnly = req.query.unread === 'true';
-
-  let where = '';
-  if (unreadOnly) where = 'WHERE n.read = 0';
-
-  const notifications = db.prepare(`
-    SELECT n.*, s.name AS server_name
-    FROM notifications n
-    LEFT JOIN servers s ON s.id = n.server_id
-    ${where}
-    ORDER BY n.created_at DESC
-    LIMIT ?
-  `).all(limit);
-
-  const unreadCount = db.prepare('SELECT COUNT(*) as count FROM notifications WHERE read = 0').get();
-
-  res.json({ notifications, unread_count: unreadCount.count });
-});
-
-/**
- * PUT /api/v1/notifications/:id/read — mark a single notification as read
- */
-router.put('/notifications/:id/read', authenticate, (req, res) => {
-  const notif = db.prepare('SELECT id FROM notifications WHERE id = ?').get(req.params.id);
-  if (!notif) return res.status(404).json({ error: 'Notification not found' });
-
-  db.prepare('UPDATE notifications SET read = 1 WHERE id = ?').run(req.params.id);
-  res.json({ message: 'Notification marked as read' });
-});
-
-/**
- * PUT /api/v1/notifications/read-all — mark all notifications as read
- */
-router.put('/notifications/read-all', authenticate, (req, res) => {
-  db.prepare('UPDATE notifications SET read = 1 WHERE read = 0').run();
-  res.json({ message: 'All notifications marked as read' });
-});
-
-// ─── Chat History ───────────────────────────────────────────
-
-/**
- * GET /api/v1/servers/:id/chat — get chat history for a server
- */
 router.get('/servers/:id/chat', authenticate, (req, res) => {
   const limit = parseInt(req.query.limit) || 100;
   const messages = db.prepare(
