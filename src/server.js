@@ -121,6 +121,16 @@ export MGMT_API_KEY="${apiKey}"
 });
 
 // ─── Self-Update ────────────────────────────────────────────
+app.get('/api/v1/mgmt/latest-version', async (_req, res) => {
+  try {
+    const response = await fetch(`https://raw.githubusercontent.com/ivanuser/cortex-management-server/main/version.json?t=${Date.now()}`);
+    const data = await response.json();
+    res.set('Cache-Control', 'no-store').json(data);
+  } catch {
+    res.status(502).json({ error: 'Could not reach GitHub' });
+  }
+});
+
 app.get('/api/v1/mgmt/version', (_req, res) => {
   try {
     const versionFile = path.join(__dirname, '..', 'version.json');

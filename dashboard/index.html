@@ -4409,8 +4409,8 @@ async function checkMgmtUpdate() {
   statusEl.innerHTML = '<span style="color:var(--text-dim)">🔍 Checking...</span>';
   try {
     const current = await api('/mgmt/version');
-    const latest = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-management-server/main/version.json?nocache=' + Date.now())
-      .then(r => r.json()).catch(() => null);
+    // Fetch via our own API to avoid Cloudflare caching raw.githubusercontent.com
+    const latest = await api('/mgmt/latest-version').catch(() => null);
     if (!latest) {
       statusEl.innerHTML = '<span style="color:var(--text-muted)">⚠️ Could not reach GitHub.</span>';
       return;
