@@ -255,7 +255,20 @@ router.get('/servers/:id/memory', authenticate, async (req, res) => {
     const timeout = setTimeout(() => controller.abort(), 15000);
     const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
-    if (!response.ok) return res.status(response.status).json({ error: 'Failed to fetch memory from agent' });
+    if (!response.ok) {
+      // Check for cached data before giving up
+      const cached = db.prepare(
+        'SELECT snapshot_json FROM memory_snapshots WHERE server_id = ? ORDER BY created_at DESC LIMIT 1'
+      ).get(server.id);
+      if (cached) {
+        try {
+          const data = JSON.parse(cached.snapshot_json);
+          data._cached = true;
+          return res.json(data);
+        } catch {}
+      }
+      return res.status(502).json({ error: 'memory.json not found on agent — run cortexos-memory-export first', no_data: true });
+    }
 
     const data = await response.json();
 

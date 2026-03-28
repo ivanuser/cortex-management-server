@@ -7344,7 +7344,17 @@ async function renderMemory() {
       memoryData = await api('/servers/' + selectedServer.id + '/memory');
     }
   } catch (e) {
-    el.innerHTML = '<div class="memory-viewer-empty">Failed to load memory: ' + esc(e.message) + '</div>';
+    if (e.message && e.message.includes('memory.json not found')) {
+      el.innerHTML = `<div style="text-align:center;padding:3rem">
+        <div style="font-size:3rem;margin-bottom:1rem">🧠</div>
+        <h3 style="color:var(--text);margin-bottom:0.5rem">No Memory Data Yet</h3>
+        <p style="color:var(--text-dim);margin-bottom:1.5rem">The memory export hasn't been run on this agent yet.</p>
+        <button class="btn-primary" style="width:auto;padding:0.7rem 2rem" onclick="exportMemory()">📤 Export Memory Now</button>
+        <p style="color:var(--text-muted);font-size:0.72rem;margin-top:1rem">This runs cortexos-memory-export on the agent and may take a moment.</p>
+      </div>`;
+    } else {
+      el.innerHTML = '<div class="memory-viewer-empty">Failed to load memory: ' + esc(e.message) + '</div>';
+    }
     return;
   }
 
