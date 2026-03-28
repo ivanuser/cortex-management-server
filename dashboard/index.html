@@ -7341,7 +7341,7 @@ async function renderMemory() {
     if (memoryAllAgents) {
       await loadAllAgentsMemory();
     } else {
-      memoryData = await api('/servers/' + selectedServer + '/memory');
+      memoryData = await api('/servers/' + selectedServer.id + '/memory');
     }
   } catch (e) {
     el.innerHTML = '<div class="memory-viewer-empty">Failed to load memory: ' + esc(e.message) + '</div>';
@@ -7601,7 +7601,7 @@ async function triggerMemoryExport() {
   }
   if (!selectedServer) return;
   try {
-    await api('/servers/' + selectedServer + '/memory/export', { method: 'POST' });
+    await api('/servers/' + selectedServer.id + '/memory/export', { method: 'POST' });
     toast('Memory export triggered — refreshing in 10s…');
     setTimeout(() => renderMemory(), 10000);
   } catch (e) {
