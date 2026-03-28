@@ -1304,6 +1304,24 @@ router.post('/servers/:id/scan-skills', authenticate, async (req, res) => {
 });
 
 /**
+ * POST /api/v1/servers/:id/scan-compliance — trigger cortexos-compliance-scan on the agent
+ */
+router.post('/servers/:id/scan-compliance', authenticate, async (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) return res.status(404).json({ error: 'Server not found' });
+  if (!server.gateway_url || !server.gateway_token) return res.status(400).json({ error: 'Server has no gateway configured' });
+
+  const command = `Execute immediately with no commentary: sudo cortexos-compliance-scan`;
+  try {
+    await sendFleetCommand(server, command);
+    console.log(`[Compliance] Scan triggered on ${server.name}`);
+    res.json({ status: 'started' });
+  } catch(e) {
+    res.status(500).json({ error: 'Failed to send scan command: ' + e.message });
+  }
+});
+
+/**
  * POST /api/v1/notifications/internal — create a notification from the dashboard UI
  */
 router.post('/notifications/internal', authenticate, (req, res) => {

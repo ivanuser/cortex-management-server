@@ -6556,10 +6556,37 @@ async function loadCompliance() {
   }
 }
 
-function runComplianceScan() {
-  qcmd('Run sudo cortexos-compliance-scan && cat /var/lib/cortexos/dashboard/compliance.json');
-  navigate('chat');
-  toast('Compliance scan started — check chat for results');
+async function runComplianceScan() {
+  if (!selectedServer) return;
+  toast('🔄 Sending compliance scan command to ' + selectedServer.name + '...');
+  try {
+    await fetch(`/api/v1/servers/${selectedServer.id}/scan-compliance`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+    });
+  } catch {}
+
+  // Poll for updated results (up to 2 min)
+  const el = $('compliance-content');
+  let attempts = 0;
+  const oldTime = complianceData?.scan_time;
+  const poll = setInterval(async () => {
+    attempts++;
+    try {
+      const data = await api('/servers/' + selectedServer.id + '/proxy/compliance.json?t=' + Date.now());
+      if (data.scan_time && data.scan_time !== oldTime) {
+        clearInterval(poll);
+        complianceData = data;
+        renderComplianceDashboard();
+        toast('✅ Compliance scan complete!');
+        return;
+      }
+    } catch {}
+    if (attempts >= 24) {
+      clearInterval(poll);
+      toast('⚠️ Scan is taking longer than expected — check back in a moment', 'warning');
+    }
+  }, 5000);
 }
 
 function renderComplianceDashboard() {
@@ -6570,6 +6597,9 @@ function renderComplianceDashboard() {
 
   const scoreColor = s.score_percent >= 80 ? 'var(--green)' : s.score_percent >= 60 ? 'var(--yellow)' : 'var(--red)';
   const scanTime = d.scan_time ? timeAgo(d.scan_time) : 'Unknown';
+  const scanDate = d.scan_time ? new Date(d.scan_time).toLocaleString() : 'Never';
+  // Flag as stale if >24h old
+  const isStale = d.scan_time ? (Date.now() - new Date(d.scan_time).getTime()) > 86400000 : true;
 
   let html = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem">
@@ -6601,8 +6631,11 @@ function renderComplianceDashboard() {
           <option value="cmmc2" ${complianceFramework==='cmmc2'?'selected':''}>CMMC Level 2</option>
         </select>
         <button class="btn-skills" onclick="loadCompliance()">↻ Refresh</button>
-        <button class="btn-skills primary" onclick="runComplianceScan()">🔍 Run Scan</button>
+        <button class="btn-skills${isStale ? ' primary' : ''}" onclick="runComplianceScan()" style="${isStale ? 'background:var(--yellow);color:#000' : ''}">🔄 Re-run Scan</button>
       </div>
+    </div>
+    <div style="margin-bottom:1rem;font-size:0.75rem;color:${isStale ? 'var(--yellow)' : 'var(--text-muted)'}">
+      ${isStale ? '⚠️' : '🕒'} Last scan: ${scanDate} (${scanTime})${isStale ? ' — <strong>data may be stale</strong>' : ''}
     </div>`;
 
   // CMMC cards (if CMMC selected)
