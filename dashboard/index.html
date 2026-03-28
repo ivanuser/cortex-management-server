@@ -7307,6 +7307,7 @@ async function saveServerGroupAssignment(serverId) {
 let memoryData = null;
 let memoryAllAgents = false;
 let memoryAllData = {}; // serverId -> memory data
+let _serverList = []; // global server list cache for memory tab
 let memoryCategoryFilter = 'all';
 let memorySelectedEntry = null;
 let memoryEditing = false;
@@ -7329,6 +7330,10 @@ function getCategoryIcon(cat) {
 async function renderMemory() {
   const el = $('memory-content');
   if (!el) return;
+  // Ensure server list is cached
+  if (_serverList.length === 0) {
+    try { _serverList = await api('/servers'); } catch {}
+  }
 
   if (!memoryAllAgents && !selectedServer) {
     el.innerHTML = '<div class="memory-viewer-empty">Select a server first</div>';
@@ -7385,7 +7390,7 @@ async function exportMemory() {
 
 async function loadAllAgentsMemory() {
   memoryAllData = {};
-  const allServers = servers.filter(s => s.status === 'online');
+  const allServers = _serverList.filter(s => s.status === 'online');
   const results = await Promise.allSettled(
     allServers.map(async s => {
       const data = await api('/servers/' + s.id + '/memory');
@@ -7456,7 +7461,7 @@ function renderMemoryUI() {
   const el = $('memory-content');
   if (!el) return;
 
-  const serverName = memoryAllAgents ? 'All Agents' : (servers.find(s => s.id === selectedServer)?.name || 'Server');
+  const serverName = memoryAllAgents ? 'All Agents' : (selectedServer?.name || _serverList.find(s => s.id === selectedServer?.id)?.name || 'Server');
   const cached = memoryData && memoryData._cached ? ' <span style="color:var(--yellow);font-size:0.7rem">(cached)</span>' : '';
 
   el.innerHTML = `
