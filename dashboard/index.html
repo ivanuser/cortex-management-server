@@ -1455,6 +1455,93 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
+/* ─── Memory Page ─────────────────────── */
+.memory-layout { display: flex; height: calc(100vh - 60px); overflow: hidden; }
+.memory-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+  background: var(--surface); flex-shrink: 0;
+}
+.memory-topbar h2 { font-size: 1.1rem; font-weight: 600; }
+.memory-topbar-actions { display: flex; gap: 8px; align-items: center; }
+.memory-sidebar {
+  width: 180px; min-width: 180px; border-right: 1px solid var(--border);
+  background: var(--surface); overflow-y: auto; flex-shrink: 0;
+}
+.memory-cat-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; cursor: pointer; font-size: 0.85rem;
+  transition: background 0.15s; border-left: 3px solid transparent;
+}
+.memory-cat-item:hover { background: var(--surface-hover); }
+.memory-cat-item.active { background: var(--accent-glow); border-left-color: var(--accent); color: var(--accent-light); }
+.memory-cat-item .cat-icon { margin-right: 8px; }
+.memory-cat-badge {
+  font-size: 0.7rem; background: var(--surface2); color: var(--text-dim);
+  padding: 1px 7px; border-radius: 10px; min-width: 20px; text-align: center;
+}
+.memory-list {
+  width: 300px; min-width: 280px; border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+}
+.memory-search {
+  padding: 10px; border-bottom: 1px solid var(--border);
+}
+.memory-search input {
+  width: 100%; padding: 8px 12px; font-size: 0.85rem;
+  border-radius: 8px;
+}
+.memory-entries { overflow-y: auto; flex: 1; }
+.memory-entry-item {
+  padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.memory-entry-item:hover { background: var(--surface-hover); }
+.memory-entry-item.active { background: var(--accent-glow); border-left: 3px solid var(--accent); }
+.memory-entry-icon { font-size: 1rem; margin-right: 8px; }
+.memory-entry-title { font-size: 0.85rem; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.memory-entry-date { font-size: 0.7rem; color: var(--text-dim); }
+.memory-entry-snippet { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
+.memory-viewer {
+  flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column;
+}
+.memory-viewer-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); font-size: 0.95rem;
+}
+.memory-viewer-header {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.memory-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+  padding: 3px 10px; border-radius: 12px;
+  background: var(--accent-glow); color: var(--accent-light);
+  letter-spacing: 0.05em;
+}
+.memory-viewer-date { font-size: 0.8rem; color: var(--text-dim); }
+.memory-viewer-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 12px; }
+.memory-viewer-content {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 20px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;
+  line-height: 1.7; white-space: pre-wrap; word-break: break-word; flex: 1;
+  overflow-y: auto; color: var(--text);
+}
+.memory-viewer-actions { display: flex; gap: 8px; margin-top: 14px; }
+.memory-edit-area {
+  width: 100%; min-height: 300px; font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem; line-height: 1.7; resize: vertical;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 20px;
+}
+.memory-all-agents-toggle {
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: 0.8rem; color: var(--text-dim); user-select: none;
+}
+.memory-all-agents-toggle input { accent-color: var(--accent); }
+.memory-all-agents-toggle.active { color: var(--accent-light); }
+#page-memory .page-content { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 </style>
 </head>
 <body>
@@ -1585,6 +1672,9 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
         </div>
         <div class="nav-sub-item" data-page="compliance" onclick="navigate('compliance')">
           <span class="icon">🛡️</span> Compliance
+        </div>
+        <div class="nav-sub-item" data-page="memory" onclick="navigate('memory')">
+          <span class="icon">🧠</span> Memory
         </div>
       </div>
 
@@ -1820,6 +1910,11 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
         <div class="page-scroll" id="compliance-content">
           <div class="mgmt-loading">Loading compliance data</div>
         </div>
+      </div>
+
+      <!-- Memory Page -->
+      <div class="page" id="page-memory">
+        <div class="page-content" id="memory-content"></div>
       </div>
 
       <!-- Users Page -->
@@ -2145,7 +2240,7 @@ async function markAllNotificationsRead() {
 // ═══════════════════════════════════════════════════════════
 function navigate(page) {
   // Server pages require a selected server
-  if (['chat', 'skills', 'terminal', 'health', 'files', 'services', 'docker', 'logs', 'network', 'packages', 'cron', 'compliance'].includes(page) && !selectedServer) {
+  if (['chat', 'skills', 'terminal', 'health', 'files', 'services', 'docker', 'logs', 'network', 'packages', 'cron', 'compliance', 'memory'].includes(page) && !selectedServer) {
     toast('Select a server first', 'error');
     page = 'fleet';
   }
@@ -2174,7 +2269,7 @@ function navigate(page) {
     terminal: renderTerminal, health: renderHealth, files: renderFiles,
     services: renderServices, docker: renderDocker, logs: renderLogs,
     network: renderNetwork, packages: renderPackages, cron: renderCron, compliance: renderCompliance,
-    updates: renderUpdates, users: renderUsers,
+    memory: renderMemory, updates: renderUpdates, users: renderUsers,
     settings: renderSettings, audit: renderAudit, schedules: renderSchedules,
     'incidents-page': renderIncidentsPage, analytics: renderAnalytics
   };
@@ -7203,6 +7298,364 @@ async function saveServerGroupAssignment(serverId) {
     await loadGroups();
     renderFleet();
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// MEMORY PAGE
+// ═══════════════════════════════════════════════════════════
+
+let memoryData = null;
+let memoryAllAgents = false;
+let memoryAllData = {}; // serverId -> memory data
+let memoryCategoryFilter = 'all';
+let memorySelectedEntry = null;
+let memoryEditing = false;
+let memorySearchTerm = '';
+
+const MEMORY_CATEGORIES = {
+  'all':       { icon: '📋', label: 'All' },
+  'long-term': { icon: '📖', label: 'Long-term' },
+  'daily':     { icon: '📅', label: 'Daily' },
+  'dreams':    { icon: '💤', label: 'Dreams' },
+  'shadow':    { icon: '🌑', label: 'Shadow' },
+  'context':   { icon: '🎭', label: 'Context' },
+  'system':    { icon: '⚙️', label: 'System' }
+};
+
+function getCategoryIcon(cat) {
+  return (MEMORY_CATEGORIES[cat] || MEMORY_CATEGORIES['system']).icon;
+}
+
+async function renderMemory() {
+  const el = $('memory-content');
+  if (!el) return;
+
+  if (!memoryAllAgents && !selectedServer) {
+    el.innerHTML = '<div class="memory-viewer-empty">Select a server first</div>';
+    return;
+  }
+
+  el.innerHTML = '<div class="mgmt-loading">Loading memory data…</div>';
+
+  try {
+    if (memoryAllAgents) {
+      await loadAllAgentsMemory();
+    } else {
+      memoryData = await api('/servers/' + selectedServer + '/memory');
+    }
+  } catch (e) {
+    el.innerHTML = '<div class="memory-viewer-empty">Failed to load memory: ' + esc(e.message) + '</div>';
+    return;
+  }
+
+  renderMemoryUI();
+}
+
+async function loadAllAgentsMemory() {
+  memoryAllData = {};
+  const allServers = servers.filter(s => s.status === 'online');
+  const results = await Promise.allSettled(
+    allServers.map(async s => {
+      const data = await api('/servers/' + s.id + '/memory');
+      return { serverId: s.id, serverName: s.name, data };
+    })
+  );
+  for (const r of results) {
+    if (r.status === 'fulfilled') {
+      memoryAllData[r.value.serverId] = r.value;
+    }
+  }
+}
+
+function getMemoryEntries() {
+  let entries = [];
+  if (memoryAllAgents) {
+    for (const [sid, obj] of Object.entries(memoryAllData)) {
+      if (obj.data && obj.data.entries) {
+        for (const e of obj.data.entries) {
+          entries.push({ ...e, _serverId: sid, _serverName: obj.serverName });
+        }
+      }
+    }
+  } else if (memoryData && memoryData.entries) {
+    const sName = servers.find(s => s.id === selectedServer)?.name || '';
+    entries = memoryData.entries.map(e => ({ ...e, _serverId: selectedServer, _serverName: sName }));
+  }
+
+  // Filter by category
+  if (memoryCategoryFilter !== 'all') {
+    entries = entries.filter(e => e.category === memoryCategoryFilter);
+  }
+
+  // Filter by search
+  if (memorySearchTerm.trim()) {
+    const q = memorySearchTerm.toLowerCase();
+    entries = entries.filter(e =>
+      (e.title || '').toLowerCase().includes(q) ||
+      (e.content || '').toLowerCase().includes(q) ||
+      (e.label || '').toLowerCase().includes(q)
+    );
+  }
+
+  // Sort by date descending
+  entries.sort((a, b) => ((b.date || b.updated || '') > (a.date || a.updated || '') ? 1 : -1));
+  return entries;
+}
+
+function getCategoryCounts() {
+  let entries = [];
+  if (memoryAllAgents) {
+    for (const obj of Object.values(memoryAllData)) {
+      if (obj.data && obj.data.entries) entries.push(...obj.data.entries);
+    }
+  } else if (memoryData && memoryData.entries) {
+    entries = memoryData.entries;
+  }
+
+  const counts = { all: entries.length };
+  for (const e of entries) {
+    const cat = e.category || 'system';
+    counts[cat] = (counts[cat] || 0) + 1;
+  }
+  return counts;
+}
+
+function renderMemoryUI() {
+  const el = $('memory-content');
+  if (!el) return;
+
+  const serverName = memoryAllAgents ? 'All Agents' : (servers.find(s => s.id === selectedServer)?.name || 'Server');
+  const cached = memoryData && memoryData._cached ? ' <span style="color:var(--yellow);font-size:0.7rem">(cached)</span>' : '';
+
+  el.innerHTML = `
+    <div class="memory-topbar">
+      <h2>🧠 Memory — ${esc(serverName)}${cached}</h2>
+      <div class="memory-topbar-actions">
+        <label class="memory-all-agents-toggle ${memoryAllAgents ? 'active' : ''}">
+          <input type="checkbox" ${memoryAllAgents ? 'checked' : ''} onchange="toggleMemoryAllAgents(this.checked)">
+          📡 All Agents
+        </label>
+        <button class="btn-skills" onclick="triggerMemoryExport()">📤 Export</button>
+      </div>
+    </div>
+    <div class="memory-layout">
+      <div class="memory-sidebar" id="memory-sidebar"></div>
+      <div class="memory-list" id="memory-list-panel"></div>
+      <div class="memory-viewer" id="memory-viewer-panel"></div>
+    </div>
+  `;
+
+  renderMemorySidebar();
+  renderMemoryEntryList();
+  renderMemoryViewer();
+}
+
+function renderMemorySidebar() {
+  const el = $('memory-sidebar');
+  if (!el) return;
+
+  const counts = getCategoryCounts();
+  let html = '';
+  for (const [key, meta] of Object.entries(MEMORY_CATEGORIES)) {
+    const count = counts[key] || 0;
+    const active = memoryCategoryFilter === key ? 'active' : '';
+    html += `
+      <div class="memory-cat-item ${active}" onclick="filterMemoryCategory('${key}')">
+        <span><span class="cat-icon">${meta.icon}</span> ${esc(meta.label)}</span>
+        <span class="memory-cat-badge">${count}</span>
+      </div>
+    `;
+  }
+  el.innerHTML = html;
+}
+
+function renderMemoryEntryList() {
+  const el = $('memory-list-panel');
+  if (!el) return;
+
+  const entries = getMemoryEntries();
+
+  let html = `
+    <div class="memory-search">
+      <input type="text" placeholder="Search entries…" value="${esc(memorySearchTerm)}"
+        oninput="memorySearchDebounce(this.value)" id="memory-search-input">
+    </div>
+    <div class="memory-entries">
+  `;
+
+  if (entries.length === 0) {
+    html += '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:0.85rem">No entries found</div>';
+  }
+
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    const icon = getCategoryIcon(e.category);
+    const title = e.title || e.label || e.path || 'Untitled';
+    const date = e.date || e.updated || '';
+    const snippet = (e.content || '').substring(0, 80).replace(/\n/g, ' ');
+    const active = memorySelectedEntry && memorySelectedEntry.id === e.id && memorySelectedEntry._serverId === e._serverId ? 'active' : '';
+    const serverTag = memoryAllAgents ? `<span style="color:var(--accent-light);font-size:0.65rem">${esc(e._serverName)}</span> ` : '';
+
+    html += `
+      <div class="memory-entry-item ${active}" onclick="selectMemoryEntry(${i})">
+        <div style="display:flex;align-items:center">
+          <span class="memory-entry-icon">${icon}</span>
+          <div style="flex:1;min-width:0">
+            <div class="memory-entry-title">${serverTag}${esc(title)}</div>
+            <div class="memory-entry-date">${esc(date)}</div>
+          </div>
+        </div>
+        <div class="memory-entry-snippet">${esc(snippet)}</div>
+      </div>
+    `;
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+let _memorySearchTimer = null;
+function memorySearchDebounce(val) {
+  clearTimeout(_memorySearchTimer);
+  _memorySearchTimer = setTimeout(() => {
+    memorySearchTerm = val;
+    renderMemoryEntryList();
+  }, 200);
+}
+
+function selectMemoryEntry(idx) {
+  const entries = getMemoryEntries();
+  memorySelectedEntry = entries[idx] || null;
+  memoryEditing = false;
+  renderMemoryEntryList();
+  renderMemoryViewer();
+}
+
+function renderMemoryViewer() {
+  const el = $('memory-viewer-panel');
+  if (!el) return;
+
+  if (!memorySelectedEntry) {
+    el.innerHTML = '<div class="memory-viewer-empty">Select an entry to view</div>';
+    return;
+  }
+
+  const e = memorySelectedEntry;
+  const icon = getCategoryIcon(e.category);
+  const title = e.title || e.label || e.path || 'Untitled';
+  const catLabel = (MEMORY_CATEGORIES[e.category] || MEMORY_CATEGORIES['system']).label;
+  const date = e.date || e.updated || '';
+  const serverTag = memoryAllAgents ? `<span style="color:var(--text-dim);font-size:0.8rem;margin-left:8px">${esc(e._serverName)}</span>` : '';
+
+  if (memoryEditing) {
+    el.innerHTML = `
+      <div class="memory-viewer-header">
+        <span class="memory-badge">${icon} ${esc(catLabel)}</span>
+        <span class="memory-viewer-date">${esc(date)}</span>${serverTag}
+      </div>
+      <div class="memory-viewer-title">${esc(title)}</div>
+      <textarea class="memory-edit-area" id="memory-edit-textarea">${esc(e.content || '')}</textarea>
+      <div class="memory-viewer-actions">
+        <button class="btn-skills primary" onclick="saveMemoryEntry()">💾 Save</button>
+        <button class="btn-ghost" onclick="memoryEditing=false;renderMemoryViewer()">Cancel</button>
+      </div>
+    `;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="memory-viewer-header">
+      <span class="memory-badge">${icon} ${esc(catLabel)}</span>
+      <span class="memory-viewer-date">${esc(date)}</span>${serverTag}
+    </div>
+    <div class="memory-viewer-title">${esc(title)}</div>
+    <pre class="memory-viewer-content">${esc(e.content || '')}</pre>
+    <div class="memory-viewer-actions">
+      <button class="btn-skills" onclick="memoryEditing=true;renderMemoryViewer()">✏️ Edit</button>
+      <button class="btn-ghost" onclick="backupMemoryEntry()">💾 Backup now</button>
+    </div>
+  `;
+}
+
+function filterMemoryCategory(cat) {
+  memoryCategoryFilter = cat;
+  memorySelectedEntry = null;
+  memoryEditing = false;
+  renderMemorySidebar();
+  renderMemoryEntryList();
+  renderMemoryViewer();
+}
+
+function toggleMemoryAllAgents(checked) {
+  memoryAllAgents = checked;
+  memorySelectedEntry = null;
+  memoryEditing = false;
+  memoryCategoryFilter = 'all';
+  renderMemory();
+}
+
+async function triggerMemoryExport() {
+  if (memoryAllAgents) {
+    toast('Select a single server to export', 'error');
+    return;
+  }
+  if (!selectedServer) return;
+  try {
+    await api('/servers/' + selectedServer + '/memory/export', { method: 'POST' });
+    toast('Memory export triggered — refreshing in 10s…');
+    setTimeout(() => renderMemory(), 10000);
+  } catch (e) {
+    toast('Export failed: ' + e.message, 'error');
+  }
+}
+
+async function saveMemoryEntry() {
+  const textarea = $('memory-edit-textarea');
+  if (!textarea || !memorySelectedEntry) return;
+
+  const content = textarea.value;
+  const path = memorySelectedEntry.path;
+  const serverId = memorySelectedEntry._serverId || selectedServer;
+
+  if (!path) {
+    toast('No file path for this entry', 'error');
+    return;
+  }
+
+  // Escape content for shell
+  const escaped = content.replace(/'/g, "'\\''");
+  const cmd = `Execute immediately with no commentary: cat > ~/.openclaw/workspace/${path} << 'CORTEX_MEMORY_EOF'\n${content}\nCORTEX_MEMORY_EOF`;
+
+  try {
+    await api('/fleet/command', {
+      method: 'POST',
+      body: JSON.stringify({ command: cmd, server_ids: [serverId] })
+    });
+    toast('Memory entry saved — triggering export…');
+    memoryEditing = false;
+    memorySelectedEntry.content = content;
+    renderMemoryViewer();
+
+    // Trigger export after save
+    await api('/servers/' + serverId + '/memory/export', { method: 'POST' });
+    setTimeout(() => renderMemory(), 10000);
+  } catch (e) {
+    toast('Save failed: ' + e.message, 'error');
+  }
+}
+
+async function backupMemoryEntry() {
+  if (!selectedServer && !memoryAllAgents) return;
+  const serverId = memorySelectedEntry?._serverId || selectedServer;
+  if (!serverId) return;
+
+  try {
+    // Fetch fresh memory and it auto-caches in DB
+    await api('/servers/' + serverId + '/memory');
+    toast('Memory snapshot backed up to database');
+  } catch (e) {
+    toast('Backup failed: ' + e.message, 'error');
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
