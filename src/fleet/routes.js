@@ -1162,7 +1162,7 @@ async function sendFleetCommandWithTracking(server, command, commandId, resultId
         type: 'req', id: 'connect', method: 'connect',
         params: {
           minProtocol: 3, maxProtocol: 3,
-          client: { id: 'fleet-console', displayName: 'Fleet Console', version: '1.0.0', platform: 'server', mode: 'webchat' },
+          client: { id: 'webchat-ui', displayName: 'Fleet Console', version: '1.0.0', platform: 'server', mode: 'webchat' },
           scopes: ['operator.admin'],
           auth: { token: server.gateway_token }
         }
@@ -1203,7 +1203,7 @@ async function sendFleetCommandWithTracking(server, command, commandId, resultId
             type: 'req', id: 'connect', method: 'connect',
             params: {
               minProtocol: 3, maxProtocol: 3,
-              client: { id: 'fleet-console', displayName: 'Fleet Console', version: '1.0.0', platform: 'server', mode: 'webchat' },
+              client: { id: 'webchat-ui', displayName: 'Fleet Console', version: '1.0.0', platform: 'server', mode: 'webchat' },
               scopes: ['operator.admin'],
               auth: { token: server.gateway_token }
             }
