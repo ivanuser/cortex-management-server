@@ -1001,18 +1001,44 @@ router.get('/templates/:id', authenticate, (req, res) => {
   res.json(template);
 });
 
+// ─── Command Console Tables ─────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS command_runs (
+    id TEXT PRIMARY KEY,
+    command TEXT NOT NULL,
+    label TEXT,
+    server_ids TEXT,
+    started_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS command_results (
+    id TEXT PRIMARY KEY,
+    command_id TEXT NOT NULL,
+    server_id TEXT NOT NULL,
+    server_name TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    output TEXT DEFAULT '',
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT,
+    FOREIGN KEY (command_id) REFERENCES command_runs(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_cmd_results_command ON command_results(command_id);
+`);
+
+// In-memory map of active command listeners: commandResultId -> { ws, serverId, startedAt }
+const activeCommandListeners = new Map();
+
 // ─── Fleet Command ──────────────────────────────────────────
 
 /**
- * POST /api/v1/fleet/command — send a command to multiple servers
+ * POST /api/v1/fleet/command — send a command to multiple servers and track responses
  */
 router.post('/fleet/command', authenticate, requireRole('admin', 'operator'), async (req, res) => {
-  const { command, server_ids } = req.body;
+  const { command, server_ids, label } = req.body;
 
-  if (!command) return res.status(400).json({ error: 'Command required' });
+  if (!command) return res.json({ error: 'Command required' });
 
   let targetServers;
-  if (!server_ids || server_ids === '*') {
+  if (!server_ids || server_ids === '*' || (Array.isArray(server_ids) && server_ids.length === 0)) {
     targetServers = db.prepare(
       'SELECT id, name, gateway_url, gateway_token, status FROM servers'
     ).all();
@@ -1024,20 +1050,238 @@ router.post('/fleet/command', authenticate, requireRole('admin', 'operator'), as
     ).all(...ids);
   }
 
+  // Create command run record
+  const commandId = crypto.randomUUID();
+  const serverIdList = targetServers.map(s => s.id);
+  db.prepare(
+    'INSERT INTO command_runs (id, command, label, server_ids) VALUES (?, ?, ?, ?)'
+  ).run(commandId, command, label || null, JSON.stringify(serverIdList));
+
   const results = [];
   for (const server of targetServers) {
+    const resultId = crypto.randomUUID();
     if (server.status === 'offline' || !server.gateway_url || !server.gateway_token) {
+      db.prepare(
+        "INSERT INTO command_results (id, command_id, server_id, server_name, status, output, completed_at) VALUES (?, ?, ?, ?, 'skipped', ?, datetime('now'))"
+      ).run(resultId, commandId, server.id, server.name, 'Offline or no gateway configured');
       results.push({ server_id: server.id, server_name: server.name, status: 'skipped', reason: 'offline or no gateway' });
       continue;
     }
+
+    db.prepare(
+      "INSERT INTO command_results (id, command_id, server_id, server_name, status) VALUES (?, ?, ?, ?, 'sent')"
+    ).run(resultId, commandId, server.id, server.name);
     results.push({ server_id: server.id, server_name: server.name, status: 'sent' });
-    // Fire command asynchronously
-    sendFleetCommand(server, command);
+
+    // Fire command and listen for response
+    sendFleetCommandWithTracking(server, command, commandId, resultId);
   }
 
   audit(req.user.id, 'fleet_command', `Fleet command sent to ${results.filter(r => r.status === 'sent').length} servers: ${command.slice(0, 100)}`, req.ip);
-  res.json({ results, command });
+  res.json({ commandId, results, command });
 });
+
+/**
+ * GET /api/v1/fleet/command/:commandId/results — poll for command results
+ */
+router.get('/fleet/command/:commandId/results', authenticate, (req, res) => {
+  const run = db.prepare('SELECT * FROM command_runs WHERE id = ?').get(req.params.commandId);
+  if (!run) return res.json({ error: 'Command run not found', results: [] });
+
+  const results = db.prepare(
+    'SELECT server_id, server_name, status, output, started_at, completed_at FROM command_results WHERE command_id = ? ORDER BY server_name'
+  ).all(req.params.commandId);
+
+  res.json({
+    commandId: run.id,
+    command: run.command,
+    label: run.label,
+    started_at: run.started_at,
+    results
+  });
+});
+
+/**
+ * Send a fleet command to a single server via WebSocket and track the response
+ */
+async function sendFleetCommandWithTracking(server, command, commandId, resultId) {
+  const RESPONSE_TIMEOUT = 90_000; // 90s timeout for AI response
+
+  try {
+    const { WebSocket } = await import('ws');
+    const gwUrl = server.gateway_url.replace(/^http/, 'ws').replace(/\/$/, '');
+
+    console.log(`[Fleet] Sending tracked command to ${server.name} (${gwUrl}): ${command.substring(0, 60)}...`);
+    const ws = new WebSocket(gwUrl, {
+      headers: { 'Origin': server.gateway_url }
+    });
+
+    let authenticated = false;
+    let responseCollected = '';
+    let responseTimer = null;
+    let commandSent = false;
+
+    const cleanup = () => {
+      if (responseTimer) clearTimeout(responseTimer);
+      activeCommandListeners.delete(resultId);
+      try { ws.close(); } catch {}
+    };
+
+    const markResponded = (output) => {
+      db.prepare(
+        "UPDATE command_results SET status = 'responded', output = ?, completed_at = datetime('now') WHERE id = ?"
+      ).run(output, resultId);
+      cleanup();
+    };
+
+    const markTimeout = () => {
+      const currentOutput = responseCollected || 'No response received within timeout period';
+      db.prepare(
+        "UPDATE command_results SET status = 'timeout', output = ?, completed_at = datetime('now') WHERE id = ?"
+      ).run(currentOutput, resultId);
+      cleanup();
+    };
+
+    const markError = (errMsg) => {
+      db.prepare(
+        "UPDATE command_results SET status = 'error', output = ?, completed_at = datetime('now') WHERE id = ?"
+      ).run(errMsg, resultId);
+      cleanup();
+    };
+
+    // Set overall timeout
+    const overallTimeout = setTimeout(() => {
+      console.log(`[Fleet] Overall timeout for ${server.name}`);
+      if (commandSent) markTimeout();
+      else markError('Connection timeout — could not reach agent');
+    }, RESPONSE_TIMEOUT);
+
+    ws.on('open', () => {
+      console.log(`[Fleet] Connected to ${server.name}`);
+      ws.send(JSON.stringify({
+        type: 'req', id: 'connect', method: 'connect',
+        params: {
+          minProtocol: 3, maxProtocol: 3,
+          client: { id: 'fleet-console', displayName: 'Fleet Console', version: '1.0.0', platform: 'server', mode: 'webchat' },
+          scopes: ['operator.admin'],
+          auth: { token: server.gateway_token }
+        }
+      }));
+    });
+
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+
+        // Handle auth
+        if (msg.type === 'res' && msg.id === 'connect' && msg.ok) {
+          authenticated = true;
+          console.log(`[Fleet] Auth OK for ${server.name}, sending command...`);
+          ws.send(JSON.stringify({
+            type: 'req', method: 'chat.send', id: 'fleet-' + crypto.randomUUID(),
+            params: {
+              sessionKey: 'agent:main:webchat',
+              message: command,
+              idempotencyKey: crypto.randomUUID()
+            }
+          }));
+          commandSent = true;
+
+          // Start response timeout (keep WS open to collect response)
+          responseTimer = setTimeout(() => {
+            if (responseCollected) {
+              markResponded(responseCollected);
+            } else {
+              // Keep waiting up to overall timeout
+            }
+          }, 60_000);
+        }
+
+        // Handle connect challenge
+        if (msg.type === 'event' && msg.event === 'connect.challenge') {
+          ws.send(JSON.stringify({
+            type: 'req', id: 'connect', method: 'connect',
+            params: {
+              minProtocol: 3, maxProtocol: 3,
+              client: { id: 'fleet-console', displayName: 'Fleet Console', version: '1.0.0', platform: 'server', mode: 'webchat' },
+              scopes: ['operator.admin'],
+              auth: { token: server.gateway_token }
+            }
+          }));
+        }
+
+        // Collect assistant responses (chat messages from the agent)
+        if (msg.type === 'event' && msg.event === 'chat.message' && authenticated && commandSent) {
+          const chatMsg = msg.params || msg.data || {};
+          if (chatMsg.role === 'assistant' || chatMsg.from === 'assistant') {
+            const content = chatMsg.content || chatMsg.text || chatMsg.message || '';
+            if (content) {
+              responseCollected += (responseCollected ? '\n' : '') + content;
+              // Update output in real-time
+              db.prepare(
+                "UPDATE command_results SET output = ?, status = 'responding' WHERE id = ?"
+              ).run(responseCollected, resultId);
+            }
+          }
+        }
+
+        // Handle streaming tokens
+        if (msg.type === 'event' && msg.event === 'chat.token' && authenticated && commandSent) {
+          const tokenData = msg.params || msg.data || {};
+          const chunk = tokenData.token || tokenData.content || tokenData.text || '';
+          if (chunk) {
+            responseCollected += chunk;
+            // Batch DB updates — update every ~500 chars or on significant content
+            if (responseCollected.length % 500 < chunk.length || chunk.includes('\n')) {
+              db.prepare(
+                "UPDATE command_results SET output = ?, status = 'responding' WHERE id = ?"
+              ).run(responseCollected, resultId);
+            }
+          }
+        }
+
+        // Handle chat.complete / turn.complete events
+        if (msg.type === 'event' && (msg.event === 'chat.complete' || msg.event === 'turn.complete') && authenticated && commandSent) {
+          console.log(`[Fleet] Response complete from ${server.name}`);
+          clearTimeout(overallTimeout);
+          markResponded(responseCollected || 'Command completed (no output captured)');
+        }
+
+        // Handle chat.send response (acknowledgment)
+        if (msg.type === 'res' && msg.id && msg.id.startsWith('fleet-') && msg.ok) {
+          console.log(`[Fleet] Command acknowledged by ${server.name}`);
+          // Don't close — wait for the actual response
+        }
+      } catch {}
+    });
+
+    ws.on('error', (err) => {
+      console.error(`[Fleet] WS error for ${server.name}:`, err.message);
+      clearTimeout(overallTimeout);
+      markError('WebSocket error: ' + err.message);
+    });
+
+    ws.on('close', () => {
+      clearTimeout(overallTimeout);
+      // If we got some response, mark as responded
+      if (commandSent && responseCollected) {
+        markResponded(responseCollected);
+      } else if (commandSent) {
+        // Command was sent but connection closed before response
+        db.prepare(
+          "UPDATE command_results SET status = CASE WHEN status = 'sent' THEN 'sent' ELSE status END WHERE id = ? AND status IN ('sent', 'pending')"
+        ).run(resultId);
+      }
+    });
+
+    activeCommandListeners.set(resultId, { ws, serverId: server.id });
+  } catch (err) {
+    console.error(`[Fleet] Failed to send to ${server.name}:`, err.message);
+    db.prepare(
+      "UPDATE command_results SET status = 'error', output = ?, completed_at = datetime('now') WHERE id = ?"
+    ).run('Failed to connect: ' + err.message, resultId);
+  }
+}
 
 /**
  * Send a fleet command to a single server via WebSocket

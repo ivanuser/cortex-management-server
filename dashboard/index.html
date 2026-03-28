@@ -1542,6 +1542,94 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 .memory-all-agents-toggle input { accent-color: var(--accent); }
 .memory-all-agents-toggle.active { color: var(--accent-light); }
 #page-memory .page-content { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+
+/* ─── Command Console ────────────── */
+.cmd-console-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9000;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(4px); animation: cmdFadeIn 0.2s ease;
+}
+@keyframes cmdFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.cmd-console-modal {
+  background: #080a12; border: 1px solid #2a2a3a; border-radius: 12px;
+  width: 90vw; max-width: 860px; max-height: 75vh; display: flex; flex-direction: column;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(108,92,231,0.1);
+  animation: cmdSlideUp 0.25s ease;
+}
+@keyframes cmdSlideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+.cmd-console-header {
+  background: #0d0f1a; padding: 0.75rem 1rem; border-bottom: 1px solid #1e2040;
+  display: flex; align-items: center; justify-content: space-between; border-radius: 12px 12px 0 0;
+}
+.cmd-console-header-left { display: flex; align-items: center; gap: 0.6rem; }
+.cmd-console-header-left .icon { font-size: 1.1rem; }
+.cmd-console-header-left h3 { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+.cmd-console-close {
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-muted); width: 28px; height: 28px; display: flex; align-items: center;
+  justify-content: center; cursor: pointer; transition: all 0.15s; font-size: 0.9rem;
+}
+.cmd-console-close:hover { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+.cmd-console-info {
+  padding: 0.5rem 1rem; background: #0a0c16; border-bottom: 1px solid #1e2040;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.72rem; color: var(--text-dim);
+}
+.cmd-console-info .cmd-label {
+  font-family: 'JetBrains Mono', monospace; color: var(--accent-light);
+}
+.cmd-console-info .cmd-targets { color: var(--text-muted); }
+.cmd-console-body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+.cmd-console-agents {
+  width: 170px; border-right: 1px solid #1e2040; overflow-y: auto; flex-shrink: 0;
+  background: #0a0c16;
+}
+.cmd-console-agents::-webkit-scrollbar { width: 3px; }
+.cmd-console-agents::-webkit-scrollbar-thumb { background: #1e2040; border-radius: 2px; }
+.cmd-console-agent-item {
+  padding: 0.55rem 0.75rem; cursor: pointer; border-bottom: 1px solid #12142a;
+  font-size: 0.76rem; display: flex; align-items: center; gap: 0.5rem;
+  transition: background 0.15s; color: var(--text-dim);
+}
+.cmd-console-agent-item:hover { background: #12142a; }
+.cmd-console-agent-item.active { background: #151830; color: var(--text); }
+.cmd-console-agent-item .cmd-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.cmd-dot-green { background: #00b894; box-shadow: 0 0 6px #00b894; }
+.cmd-dot-yellow { background: #fdcb6e; box-shadow: 0 0 6px #fdcb6e; animation: cmdPulse 1.5s ease-in-out infinite; }
+.cmd-dot-red { background: #e17055; box-shadow: 0 0 6px #e17055; }
+.cmd-dot-gray { background: #4a5278; }
+.cmd-dot-blue { background: #54a0ff; box-shadow: 0 0 6px #54a0ff; animation: cmdPulse 1s ease-in-out infinite; }
+@keyframes cmdPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.cmd-console-output {
+  flex: 1; padding: 0.75rem 1rem; overflow-y: auto;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; line-height: 1.7;
+  background: #000; color: #a0f0a0; white-space: pre-wrap; word-break: break-word;
+}
+.cmd-console-output::-webkit-scrollbar { width: 4px; }
+.cmd-console-output::-webkit-scrollbar-thumb { background: #1e2040; border-radius: 2px; }
+.cmd-console-output .cmd-line-ok { color: #00b894; }
+.cmd-console-output .cmd-line-err { color: #e17055; }
+.cmd-console-output .cmd-line-info { color: #54a0ff; }
+.cmd-console-output .cmd-line-warn { color: #fdcb6e; }
+.cmd-console-output .cmd-line-dim { color: #4a5278; }
+.cmd-console-footer {
+  padding: 0.5rem 1rem; background: #0d0f1a; border-top: 1px solid #1e2040;
+  display: flex; justify-content: space-between; align-items: center;
+  border-radius: 0 0 12px 12px;
+}
+.cmd-console-footer .cmd-status-summary {
+  font-size: 0.68rem; color: var(--text-muted); display: flex; gap: 1rem;
+}
+.cmd-console-footer .cmd-status-summary span { display: flex; align-items: center; gap: 0.3rem; }
+.cmd-console-footer-btns { display: flex; gap: 0.5rem; }
+.cmd-console-footer-btns button {
+  padding: 0.35rem 0.75rem; background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text-dim); font-size: 0.72rem; cursor: pointer;
+  transition: all 0.15s;
+}
+.cmd-console-footer-btns button:hover { border-color: var(--text-dim); color: var(--text); background: var(--surface-hover); }
 </style>
 </head>
 <body>
@@ -3805,7 +3893,7 @@ async function renderFleet() {
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
             <button class="btn-ghost" style="font-size:0.7rem;padding:0.3rem 0.6rem" onclick="event.stopPropagation();showAssignGroupsModal('${s.id}','${esc(s.name)}')" title="Assign to groups">📁</button>
             <button class="btn-ghost" style="font-size:0.7rem;padding:0.3rem 0.6rem" onclick="event.stopPropagation();checkServerUpdate('${s.id}','${esc(s.name)}')" title="Check for updates">🔍</button>
-            ${s.needs_update ? `<button class="btn-primary" style="font-size:0.7rem;padding:0.3rem 0.6rem;background:var(--yellow);color:#000" onclick="event.stopPropagation();triggerServerUpdate('${s.id}')" title="Update now">⬆ Update</button>` : ''}
+            ${s.needs_update ? `<button class="btn-primary" style="font-size:0.7rem;padding:0.3rem 0.6rem;background:var(--yellow);color:#000" onclick="event.stopPropagation();triggerServerUpdate('${s.id}','${esc(s.name)}')" title="Update now">⬆ Update</button>` : ''}
             <button class="btn-select" onclick="event.stopPropagation();selectServer('${s.id}')">${isSelected ? '✓ Selected' : 'Select'}</button>
             <button class="btn-ghost" style="font-size:0.7rem;padding:0.3rem 0.6rem" onclick="event.stopPropagation();removeServer('${s.id}','${esc(s.name)}')" title="Remove">🗑️</button>
           </div>
@@ -3896,7 +3984,7 @@ async function renderHealth() {
         ${(s.agent_version && fleetLatestVersion && s.agent_version !== fleetLatestVersion) ? `
         <div style="margin-top:0.75rem;padding:0.6rem 1rem;background:var(--yellow-bg);border:1px solid rgba(254,202,87,0.2);border-radius:var(--radius);display:flex;align-items:center;justify-content:space-between">
           <span style="font-size:0.8rem;color:var(--yellow)">⬆ Update available: v${esc(fleetLatestVersion)}</span>
-          <button class="btn-skills" style="font-size:0.7rem;padding:0.3rem 0.8rem" onclick="triggerServerUpdate('${s.id}')">🔄 Update Now</button>
+          <button class="btn-skills" style="font-size:0.7rem;padding:0.3rem 0.8rem" onclick="triggerServerUpdate('${s.id}','${esc(s.name)}')">🔄 Update Now</button>
         </div>` : ''}
       </div>
 
@@ -5068,32 +5156,19 @@ async function sendFleetCommand() {
   if (!command) { toast('Enter a command', 'error'); return; }
 
   const allServers = $('fleet-cmd-all')?.checked;
-  let server_ids = '*';
+  let serverIds = [];
   if (!allServers) {
     const checked = document.querySelectorAll('.fleet-cmd-cb:checked');
-    server_ids = Array.from(checked).map(cb => cb.value);
-    if (server_ids.length === 0) { toast('Select at least one server', 'error'); return; }
+    serverIds = Array.from(checked).map(cb => cb.value);
+    if (serverIds.length === 0) { toast('Select at least one server', 'error'); return; }
   }
 
-  $('fleet-cmd-send').disabled = true;
-  $('fleet-cmd-send').textContent = 'Sending...';
+  // Close the fleet command modal
+  const overlay = $('fleet-cmd-send')?.closest('.modal-overlay');
+  if (overlay) overlay.remove();
 
-  try {
-    const data = await api('/fleet/command', { method: 'POST', body: JSON.stringify({ command, server_ids }) });
-    const resultsArea = $('fleet-cmd-results-area');
-    resultsArea.innerHTML = `<div class="fleet-cmd-results">
-      ${data.results.map(r => `<div class="fleet-cmd-result">
-        <div class="name">${esc(r.server_name)}</div>
-        <div class="status ${r.status}">${r.status === 'sent' ? '✅ Command sent' : '⚠️ ' + (r.reason || 'Skipped')}</div>
-      </div>`).join('')}
-    </div>`;
-    toast(`Command sent to ${data.results.filter(r => r.status === 'sent').length} servers`);
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-
-  $('fleet-cmd-send').disabled = false;
-  $('fleet-cmd-send').textContent = '⚡ Send Command';
+  // Open command console
+  openCommandConsole(command, serverIds, 'Fleet Command');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5421,7 +5496,7 @@ async function renderUpdates() {
             </div>
           </div>
           <div>
-            ${s.needs_update ? `<button class="btn-skills" style="font-size:0.7rem;padding:0.3rem 0.8rem" onclick="triggerServerUpdate('${s.server_id}')">🔄 Update</button>` : ''}
+            ${s.needs_update ? `<button class="btn-skills" style="font-size:0.7rem;padding:0.3rem 0.8rem" onclick="triggerServerUpdate('${s.server_id}','${esc(s.server_name)}')">🔄 Update</button>` : ''}
           </div>
         </div>`;
     }
@@ -5460,24 +5535,15 @@ async function checkServerUpdate(serverId, serverName) {
   }
 }
 
-async function triggerServerUpdate(serverId) {
+async function triggerServerUpdate(serverId, serverName) {
   if (!confirm('Send update command to this server? It will download and install the latest CortexOS components.')) return;
-  try {
-    const result = await api(`/servers/${serverId}/update`, { method: 'POST' });
-    toast(`Update command sent to ${result.server_name || 'server'}`);
-  } catch (e) {
-    toast('Failed to send update: ' + e.message, 'error');
-  }
+  const name = serverName || (selectedServer && selectedServer.id === serverId ? selectedServer.name : 'Server');
+  openCommandConsole('Execute this command immediately with no commentary: sudo cortexos-update', [serverId], 'CortexOS Update — ' + name);
 }
 
 async function triggerFleetUpdate() {
   if (!confirm('Update ALL online servers? This will send the update command to every online server.')) return;
-  try {
-    const result = await api('/fleet/update', { method: 'POST' });
-    toast(`Update sent to ${result.total_sent} server${result.total_sent !== 1 ? 's' : ''}`);
-  } catch (e) {
-    toast('Fleet update failed: ' + e.message, 'error');
-  }
+  openCommandConsole('Execute this command immediately with no commentary: sudo cortexos-update', [], 'CortexOS Update — All Agents');
 }
 
 async function renderAnalytics() {
@@ -7984,22 +8050,306 @@ function dcShowDetail(serverId) {
 
 async function dcInstallOn(serverId, serverName) {
   if (!confirm('Install DefenseClaw on ' + serverName + '?')) return;
-  try {
-    await api('/servers/' + serverId + '/defenseclaw/install', { method: 'POST' });
-    toast('🛡️ DefenseClaw install started on ' + serverName);
-  } catch (e) {
-    toast('Install failed: ' + e.message, 'error');
-  }
+  openCommandConsole('Execute immediately with no commentary: sudo cortexos-defenseclaw', [serverId], '🛡️ DefenseClaw Install — ' + serverName);
 }
 
 async function dcInstallAll() {
   if (!confirm('Install DefenseClaw on ALL online servers?')) return;
+  openCommandConsole('Execute immediately with no commentary: sudo cortexos-defenseclaw', [], '🛡️ DefenseClaw Install — All Agents');
+}
+
+// ═══════════════════════════════════════════════════════════
+// COMMAND CONSOLE
+// ═══════════════════════════════════════════════════════════
+
+let cmdConsoleState = null; // { commandId, pollTimer, servers, activeServerId }
+
+function openCommandConsole(command, serverIds, label) {
+  // Close any existing console
+  closeCommandConsole();
+
+  // Create overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'cmd-console-overlay';
+  overlay.id = 'cmd-console-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) return; }; // don't close on backdrop click
+
+  const now = new Date();
+  const timeStr = now.toUTCString().replace(/.*,\s/, '').replace(/:\d{2}\sGMT/, ' UTC');
+
+  overlay.innerHTML = `
+    <div class="cmd-console-modal">
+      <div class="cmd-console-header">
+        <div class="cmd-console-header-left">
+          <span class="icon">🖥️</span>
+          <h3>Command Console</h3>
+        </div>
+        <button class="cmd-console-close" onclick="closeCommandConsole()" title="Close">✕</button>
+      </div>
+      <div class="cmd-console-info">
+        <div>
+          <span style="color:var(--text-muted)">Command:</span>
+          <span class="cmd-label">${esc(label || command)}</span>
+        </div>
+        <div>
+          <span class="cmd-targets" id="cmd-console-targets">Sending…</span>
+          <span style="margin-left:0.75rem;color:var(--text-muted)">${esc(timeStr)}</span>
+        </div>
+      </div>
+      <div class="cmd-console-body">
+        <div class="cmd-console-agents" id="cmd-console-agents">
+          <div style="padding:0.75rem;color:var(--text-muted);font-size:0.72rem">Connecting…</div>
+        </div>
+        <div class="cmd-console-output" id="cmd-console-output">
+          <span class="cmd-line-info">⏳ Dispatching command to fleet…</span>
+        </div>
+      </div>
+      <div class="cmd-console-footer">
+        <div class="cmd-status-summary" id="cmd-console-summary">
+          <span>⏳ Sending…</span>
+        </div>
+        <div class="cmd-console-footer-btns">
+          <button onclick="cmdConsoleClear()">Clear</button>
+          <button onclick="closeCommandConsole()">Close</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Handle Escape key
+  const escHandler = (e) => {
+    if (e.key === 'Escape') closeCommandConsole();
+  };
+  document.addEventListener('keydown', escHandler);
+  overlay._escHandler = escHandler;
+
+  // Send the command
+  cmdConsoleSend(command, serverIds, label);
+}
+
+async function cmdConsoleSend(command, serverIds, label) {
   try {
-    const result = await api('/fleet/defenseclaw/install-all', { method: 'POST' });
-    toast('🛡️ DefenseClaw install sent to ' + result.total_sent + ' server(s)');
+    const body = { command, label: label || undefined };
+    if (serverIds && serverIds.length > 0) {
+      body.server_ids = serverIds;
+    } else {
+      body.server_ids = '*';
+    }
+
+    const data = await api('/fleet/command', { method: 'POST', body: JSON.stringify(body) });
+
+    if (data.error) {
+      const outputEl = $('cmd-console-output');
+      if (outputEl) outputEl.innerHTML = `<span class="cmd-line-err">❌ ${esc(data.error)}</span>`;
+      return;
+    }
+
+    const commandId = data.commandId;
+    const servers = data.results || [];
+
+    // Build targets label
+    const targetNames = servers.map(s => s.server_name).join(' · ');
+    const targetsEl = $('cmd-console-targets');
+    if (targetsEl) targetsEl.textContent = targetNames;
+
+    // Initialize state
+    cmdConsoleState = {
+      commandId,
+      servers: servers.map(s => ({
+        server_id: s.server_id,
+        server_name: s.server_name,
+        status: s.status,
+        output: s.status === 'skipped' ? ('⚠️ ' + (s.reason || 'Skipped')) : '',
+      })),
+      activeServerId: servers.length > 0 ? servers[0].server_id : null,
+      pollTimer: null,
+      startedAt: Date.now()
+    };
+
+    // Render agent list
+    cmdConsoleRenderAgents();
+    cmdConsoleRenderOutput();
+
+    // Start polling
+    cmdConsoleState.pollTimer = setInterval(() => cmdConsolePoll(), 3000);
+
+    toast(`Command sent to ${servers.filter(s => s.status === 'sent').length} server(s)`);
+
   } catch (e) {
-    toast('Install-all failed: ' + e.message, 'error');
+    const outputEl = $('cmd-console-output');
+    if (outputEl) outputEl.innerHTML = `<span class="cmd-line-err">❌ Failed to send command: ${esc(e.message)}</span>`;
   }
+}
+
+function cmdConsoleRenderAgents() {
+  const el = $('cmd-console-agents');
+  if (!el || !cmdConsoleState) return;
+
+  el.innerHTML = cmdConsoleState.servers.map(s => {
+    const dotClass = cmdConsoleDotClass(s.status);
+    const isActive = s.server_id === cmdConsoleState.activeServerId;
+    return `<div class="cmd-console-agent-item ${isActive ? 'active' : ''}"
+                 onclick="cmdConsoleSelectAgent('${s.server_id}')">
+      <span class="cmd-dot ${dotClass}"></span>
+      <span>${esc(s.server_name)}</span>
+    </div>`;
+  }).join('');
+}
+
+function cmdConsoleDotClass(status) {
+  switch (status) {
+    case 'responded': return 'cmd-dot-green';
+    case 'responding': return 'cmd-dot-blue';
+    case 'sent': case 'pending': return 'cmd-dot-yellow';
+    case 'timeout': case 'error': return 'cmd-dot-red';
+    case 'skipped': return 'cmd-dot-gray';
+    default: return 'cmd-dot-yellow';
+  }
+}
+
+function cmdConsoleStatusIcon(status) {
+  switch (status) {
+    case 'responded': return '✅';
+    case 'responding': return '🔄';
+    case 'sent': case 'pending': return '⏳';
+    case 'timeout': return '⏰';
+    case 'error': return '❌';
+    case 'skipped': return '⚠️';
+    default: return '⏳';
+  }
+}
+
+function cmdConsoleSelectAgent(serverId) {
+  if (!cmdConsoleState) return;
+  cmdConsoleState.activeServerId = serverId;
+  cmdConsoleRenderAgents();
+  cmdConsoleRenderOutput();
+}
+
+function cmdConsoleRenderOutput() {
+  const el = $('cmd-console-output');
+  if (!el || !cmdConsoleState) return;
+
+  const server = cmdConsoleState.servers.find(s => s.server_id === cmdConsoleState.activeServerId);
+  if (!server) {
+    el.innerHTML = '<span class="cmd-line-dim">Select an agent to view output</span>';
+    return;
+  }
+
+  const icon = cmdConsoleStatusIcon(server.status);
+  let statusLine = '';
+  switch (server.status) {
+    case 'sent':
+    case 'pending':
+      statusLine = `<span class="cmd-line-warn">${icon} Waiting for response…</span>`;
+      break;
+    case 'responding':
+      statusLine = `<span class="cmd-line-info">${icon} Receiving response…</span>`;
+      break;
+    case 'responded':
+      statusLine = `<span class="cmd-line-ok">${icon} Command completed</span>`;
+      break;
+    case 'timeout':
+      statusLine = `<span class="cmd-line-err">${icon} Response timed out</span>`;
+      break;
+    case 'error':
+      statusLine = `<span class="cmd-line-err">${icon} Error occurred</span>`;
+      break;
+    case 'skipped':
+      statusLine = `<span class="cmd-line-warn">${icon} Skipped</span>`;
+      break;
+  }
+
+  const output = server.output ? esc(server.output) : '';
+  el.innerHTML = statusLine + (output ? '\n\n' + output : '');
+  el.scrollTop = el.scrollHeight;
+}
+
+function cmdConsoleUpdateSummary() {
+  const el = $('cmd-console-summary');
+  if (!el || !cmdConsoleState) return;
+
+  const counts = { sent: 0, responded: 0, responding: 0, error: 0, timeout: 0, skipped: 0 };
+  cmdConsoleState.servers.forEach(s => {
+    if (s.status === 'sent' || s.status === 'pending') counts.sent++;
+    else if (s.status === 'responded') counts.responded++;
+    else if (s.status === 'responding') counts.responding++;
+    else if (s.status === 'error') counts.error++;
+    else if (s.status === 'timeout') counts.timeout++;
+    else if (s.status === 'skipped') counts.skipped++;
+  });
+
+  const parts = [];
+  if (counts.responded > 0) parts.push(`<span><span class="cmd-dot cmd-dot-green" style="width:6px;height:6px;display:inline-block"></span> ${counts.responded} done</span>`);
+  if (counts.responding > 0) parts.push(`<span><span class="cmd-dot cmd-dot-blue" style="width:6px;height:6px;display:inline-block"></span> ${counts.responding} receiving</span>`);
+  if (counts.sent > 0) parts.push(`<span><span class="cmd-dot cmd-dot-yellow" style="width:6px;height:6px;display:inline-block"></span> ${counts.sent} waiting</span>`);
+  if (counts.error > 0) parts.push(`<span><span class="cmd-dot cmd-dot-red" style="width:6px;height:6px;display:inline-block"></span> ${counts.error} error</span>`);
+  if (counts.timeout > 0) parts.push(`<span><span class="cmd-dot cmd-dot-red" style="width:6px;height:6px;display:inline-block"></span> ${counts.timeout} timeout</span>`);
+  if (counts.skipped > 0) parts.push(`<span><span class="cmd-dot cmd-dot-gray" style="width:6px;height:6px;display:inline-block"></span> ${counts.skipped} skipped</span>`);
+
+  el.innerHTML = parts.join('') || '<span>No servers</span>';
+}
+
+async function cmdConsolePoll() {
+  if (!cmdConsoleState || !cmdConsoleState.commandId) return;
+
+  // Stop polling after 120 seconds max
+  if (Date.now() - cmdConsoleState.startedAt > 120_000) {
+    cmdConsoleStopPolling();
+    return;
+  }
+
+  try {
+    const data = await api('/fleet/command/' + cmdConsoleState.commandId + '/results');
+    if (data.error || !data.results) return;
+
+    let allDone = true;
+    for (const result of data.results) {
+      const existing = cmdConsoleState.servers.find(s => s.server_id === result.server_id);
+      if (!existing) continue;
+
+      existing.status = result.status;
+      existing.output = result.output || existing.output;
+
+      if (['sent', 'pending', 'responding'].includes(result.status)) {
+        allDone = false;
+      }
+    }
+
+    cmdConsoleRenderAgents();
+    cmdConsoleRenderOutput();
+    cmdConsoleUpdateSummary();
+
+    if (allDone) {
+      cmdConsoleStopPolling();
+    }
+  } catch (e) {
+    // Silent fail — keep polling
+  }
+}
+
+function cmdConsoleStopPolling() {
+  if (cmdConsoleState && cmdConsoleState.pollTimer) {
+    clearInterval(cmdConsoleState.pollTimer);
+    cmdConsoleState.pollTimer = null;
+  }
+}
+
+function cmdConsoleClear() {
+  const el = $('cmd-console-output');
+  if (el) el.innerHTML = '<span class="cmd-line-dim">Output cleared</span>';
+}
+
+function closeCommandConsole() {
+  const overlay = $('cmd-console-overlay');
+  if (overlay) {
+    if (overlay._escHandler) document.removeEventListener('keydown', overlay._escHandler);
+    overlay.remove();
+  }
+  cmdConsoleStopPolling();
+  cmdConsoleState = null;
 }
 
 // ═══════════════════════════════════════════════════════════
