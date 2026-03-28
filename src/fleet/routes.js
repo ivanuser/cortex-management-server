@@ -1102,6 +1102,146 @@ async function sendFleetCommand(server, command) {
   }
 }
 
+// ─── DefenseClaw ────────────────────────────────────────────
+
+/**
+ * GET /api/v1/servers/:id/defenseclaw/status — fetch defenseclaw-status.json from agent
+ */
+router.get('/servers/:id/defenseclaw/status', authenticate, async (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) return res.status(200).json({ installed: false });
+  if (!server.gateway_url) return res.status(200).json({ installed: false });
+
+  const url = server.gateway_url.replace(/\/+$/, '') + '/defenseclaw-status.json';
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return res.json({ installed: false });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.json({ installed: false });
+  }
+});
+
+/**
+ * GET /api/v1/servers/:id/defenseclaw/alerts — fetch defenseclaw-alerts.json from agent
+ */
+router.get('/servers/:id/defenseclaw/alerts', authenticate, async (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) return res.json({ alerts: [] });
+  if (!server.gateway_url) return res.json({ alerts: [] });
+
+  const url = server.gateway_url.replace(/\/+$/, '') + '/defenseclaw-alerts.json';
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return res.json({ alerts: [] });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.json({ alerts: [] });
+  }
+});
+
+/**
+ * POST /api/v1/servers/:id/defenseclaw/install — trigger DefenseClaw install on agent
+ */
+router.post('/servers/:id/defenseclaw/install', authenticate, requireRole('admin', 'operator'), async (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) return res.status(200).json({ error: 'Server not found' });
+  if (!server.gateway_url || !server.gateway_token) return res.status(200).json({ error: 'Server has no gateway configured' });
+
+  try {
+    await sendFleetCommand(server, 'Execute immediately with no commentary: sudo cortexos-defenseclaw');
+    console.log(`[DefenseClaw] Install triggered on ${server.name}`);
+    audit(req.user.id, 'defenseclaw_install', `DefenseClaw install triggered on ${server.name}`, req.ip, server.id);
+    res.json({ status: 'started' });
+  } catch (e) {
+    res.json({ status: 'error', error: e.message });
+  }
+});
+
+/**
+ * POST /api/v1/fleet/defenseclaw/install-all — install DefenseClaw on all online servers
+ */
+router.post('/fleet/defenseclaw/install-all', authenticate, requireRole('admin'), async (req, res) => {
+  const servers = db.prepare(
+    "SELECT * FROM servers WHERE status = 'online' AND gateway_url IS NOT NULL AND gateway_token IS NOT NULL"
+  ).all();
+
+  let sent = 0;
+  for (const server of servers) {
+    try {
+      await sendFleetCommand(server, 'Execute immediately with no commentary: sudo cortexos-defenseclaw');
+      console.log(`[DefenseClaw] Install sent to ${server.name}`);
+      sent++;
+    } catch (e) {
+      console.error(`[DefenseClaw] Failed to send to ${server.name}:`, e.message);
+    }
+  }
+
+  audit(req.user.id, 'defenseclaw_install_all', `DefenseClaw install-all sent to ${sent}/${servers.length} servers`, req.ip);
+  res.json({ total_sent: sent });
+});
+
+/**
+ * GET /api/v1/defenseclaw/fleet-summary — DefenseClaw status across all agents
+ */
+router.get('/defenseclaw/fleet-summary', authenticate, async (req, res) => {
+  const servers = db.prepare(
+    "SELECT id, name, status, gateway_url FROM servers ORDER BY name"
+  ).all();
+
+  const results = [];
+  let installed = 0;
+  let running = 0;
+
+  for (const server of servers) {
+    if (server.status !== 'online' || !server.gateway_url) {
+      results.push({ server_id: server.id, server_name: server.name, online: false, installed: false });
+      continue;
+    }
+
+    const url = server.gateway_url.replace(/\/+$/, '') + '/defenseclaw-status.json';
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (response.ok) {
+        const data = await response.json();
+        results.push({
+          server_id: server.id,
+          server_name: server.name,
+          online: true,
+          installed: !!data.installed,
+          status: data.status || null,
+          version: data.version || null,
+          updated: data.updated || null
+        });
+        if (data.installed) installed++;
+        if (data.status === 'running') running++;
+      } else {
+        results.push({ server_id: server.id, server_name: server.name, online: true, installed: false });
+      }
+    } catch {
+      results.push({ server_id: server.id, server_name: server.name, online: true, installed: false });
+    }
+  }
+
+  res.json({
+    total: servers.length,
+    installed,
+    running,
+    servers: results
+  });
+});
+
 // ─── Updates ────────────────────────────────────────────────
 
 /**

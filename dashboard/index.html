@@ -1693,6 +1693,13 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
       </div>
 
       <div class="sidebar-section">
+        <div class="sidebar-title">Security</div>
+        <div class="nav-item" data-page="defenseclaw" onclick="navigate('defenseclaw')">
+          <span class="icon">🛡️</span> DefenseClaw
+        </div>
+      </div>
+
+      <div class="sidebar-section">
         <div class="sidebar-title">Administration</div>
         <div class="nav-item" data-page="updates" onclick="navigate('updates')">
           <span class="icon">🔄</span> Updates
@@ -1950,6 +1957,11 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
       <!-- Incidents Page -->
       <div class="page" id="page-incidents-page">
         <div class="page-scroll" id="incidents-page-content"></div>
+      </div>
+
+      <!-- DefenseClaw Page -->
+      <div class="page" id="page-defenseclaw">
+        <div class="page-scroll" id="defenseclaw-content"></div>
       </div>
     </div>
   </div>
@@ -2269,7 +2281,7 @@ function navigate(page) {
     terminal: renderTerminal, health: renderHealth, files: renderFiles,
     services: renderServices, docker: renderDocker, logs: renderLogs,
     network: renderNetwork, packages: renderPackages, cron: renderCron, compliance: renderCompliance,
-    memory: renderMemory, updates: renderUpdates, users: renderUsers,
+    memory: renderMemory, defenseclaw: renderDefenseClaw, updates: renderUpdates, users: renderUsers,
     settings: renderSettings, audit: renderAudit, schedules: renderSchedules,
     'incidents-page': renderIncidentsPage, analytics: renderAnalytics
   };
@@ -7723,6 +7735,270 @@ async function backupMemoryEntry() {
     toast('Memory snapshot backed up to database');
   } catch (e) {
     toast('Backup failed: ' + e.message, 'error');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// DEFENSECLAW PAGE
+// ═══════════════════════════════════════════════════════════
+let dcSelectedServer = null; // for agent detail view within DefenseClaw page
+let dcViewMode = 'fleet'; // 'fleet' | 'detail'
+
+async function renderDefenseClaw() {
+  const el = $('defenseclaw-content');
+  if (!el) return;
+
+  // If a server is selected globally AND we're in detail mode, show detail view
+  if (dcViewMode === 'detail' && dcSelectedServer) {
+    await renderDefenseClawDetail(el);
+    return;
+  }
+
+  // Fleet view
+  el.innerHTML = '<p style="color:var(--text-dim);padding:1.5rem">Loading DefenseClaw fleet summary...</p>';
+
+  try {
+    const summary = await api('/defenseclaw/fleet-summary');
+
+    // Count alerts (fetch from each installed server)
+    let totalAlerts = 0;
+    const alertCounts = {};
+    const alertPromises = summary.servers
+      .filter(s => s.installed && s.online)
+      .map(async s => {
+        try {
+          const alertData = await api('/servers/' + s.server_id + '/defenseclaw/alerts');
+          const count = (alertData.alerts || []).length;
+          alertCounts[s.server_id] = count;
+          totalAlerts += count;
+        } catch {
+          alertCounts[s.server_id] = 0;
+        }
+      });
+    await Promise.allSettled(alertPromises);
+
+    let html = `
+      <div class="section-header">
+        <h2>🛡️ <span>DefenseClaw</span> — Security Governance</h2>
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn-skills" onclick="renderDefenseClaw()">↻ Refresh</button>
+          <button class="btn-skills primary" onclick="dcInstallAll()">🚀 Install All</button>
+        </div>
+      </div>
+
+      <div class="analytics-cards" style="margin-bottom:1.5rem">
+        <div class="analytics-card">
+          <div class="value green">${summary.installed}</div>
+          <div class="label">✅ Installed</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value blue">${summary.running}</div>
+          <div class="label">⚡ Running</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value ${totalAlerts > 0 ? 'red' : 'green'}">${totalAlerts}</div>
+          <div class="label">🚨 Alerts</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value accent">${summary.total}</div>
+          <div class="label">🖥️ Total Servers</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Server</th>
+              <th>Status</th>
+              <th>Version</th>
+              <th>Alerts</th>
+              <th>Last Updated</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>`;
+
+    for (const s of summary.servers) {
+      const alerts = alertCounts[s.server_id] || 0;
+      let statusHtml;
+      if (!s.online) {
+        statusHtml = '<span style="color:var(--text-muted)">⚠️ Offline</span>';
+      } else if (s.status === 'running') {
+        statusHtml = '<span style="color:var(--green);font-weight:600">✅ Running</span>';
+      } else if (s.installed) {
+        statusHtml = '<span style="color:var(--yellow);font-weight:600">⏸ Installed</span>';
+      } else {
+        statusHtml = '<span style="color:var(--text-muted)">❌ Not installed</span>';
+      }
+
+      const alertsHtml = !s.online ? '<span style="color:var(--text-muted)">—</span>'
+        : alerts > 0 ? `<span style="color:var(--red);font-weight:600">${alerts}</span>`
+        : '<span style="color:var(--green)">0</span>';
+
+      let actionsHtml;
+      if (!s.online) {
+        actionsHtml = '<span style="color:var(--text-muted);font-size:0.72rem">Offline</span>';
+      } else if (s.installed) {
+        actionsHtml = `<button class="btn-skills" style="font-size:0.72rem;padding:4px 10px" onclick="dcShowDetail('${s.server_id}')">Details</button>`;
+      } else {
+        actionsHtml = `<button class="btn-skills primary" style="font-size:0.72rem;padding:4px 10px" onclick="dcInstallOn('${s.server_id}','${esc(s.server_name)}')">Install</button>`;
+      }
+
+      html += `
+            <tr>
+              <td><strong>${esc(s.server_name)}</strong></td>
+              <td>${statusHtml}</td>
+              <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem">${s.version ? esc(s.version) : '—'}</td>
+              <td>${alertsHtml}</td>
+              <td style="font-size:0.72rem;color:var(--text-muted)">${s.updated ? esc(s.updated) : '—'}</td>
+              <td>${actionsHtml}</td>
+            </tr>`;
+    }
+
+    html += `
+          </tbody>
+        </table>
+      </div>`;
+
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<div class="section-header"><h2>🛡️ <span>DefenseClaw</span></h2></div><p class="error-msg">${esc(e.message)}</p>`;
+  }
+}
+
+async function renderDefenseClawDetail(el) {
+  const serverId = dcSelectedServer;
+  if (!serverId) { dcViewMode = 'fleet'; renderDefenseClaw(); return; }
+
+  // Find server name
+  let serverName = 'Server';
+  if (_serverList.length === 0) { try { _serverList = await api('/servers'); } catch {} }
+  const srv = _serverList.find(s => s.id === serverId);
+  if (srv) serverName = srv.name;
+
+  el.innerHTML = '<p style="color:var(--text-dim);padding:1.5rem">Loading DefenseClaw details for ' + esc(serverName) + '...</p>';
+
+  try {
+    const [statusData, alertData] = await Promise.all([
+      api('/servers/' + serverId + '/defenseclaw/status'),
+      api('/servers/' + serverId + '/defenseclaw/alerts')
+    ]);
+
+    const alerts = alertData.alerts || [];
+
+    let html = `
+      <div class="section-header">
+        <h2>🛡️ <span>DefenseClaw</span> — ${esc(serverName)}</h2>
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn-skills" onclick="dcViewMode='fleet';dcSelectedServer=null;renderDefenseClaw()">← Fleet View</button>
+          <button class="btn-skills" onclick="renderDefenseClaw()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <div class="form-card" style="max-width:none;margin-bottom:1.5rem">
+        <h3 style="margin-bottom:1rem">Status</h3>
+        <div class="info-grid" style="margin-bottom:0">
+          <div class="info-card">
+            <div class="info-label">Installed</div>
+            <div class="info-value" style="color:${statusData.installed ? 'var(--green)' : 'var(--red)'}">
+              ${statusData.installed ? '✅ Yes' : '❌ No'}
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="info-label">Version</div>
+            <div class="info-value" style="font-family:'JetBrains Mono',monospace">${esc(statusData.version || '—')}</div>
+          </div>
+          <div class="info-card">
+            <div class="info-label">Service Status</div>
+            <div class="info-value" style="color:${statusData.status === 'running' ? 'var(--green)' : 'var(--yellow)'}">
+              ${statusData.status === 'running' ? '⚡ Running' : esc(statusData.status || '—')}
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="info-label">Last Updated</div>
+            <div class="info-value">${esc(statusData.updated || '—')}</div>
+          </div>
+        </div>`;
+
+    if (!statusData.installed) {
+      html += `
+        <div style="margin-top:1rem;padding:1rem;background:var(--yellow-bg);border:1px solid rgba(254,202,87,0.2);border-radius:var(--radius);text-align:center">
+          <p style="color:var(--yellow);margin-bottom:0.75rem">DefenseClaw is not installed on this server.</p>
+          <button class="btn-primary" style="width:auto;padding:0.5rem 1.5rem" onclick="dcInstallOn('${serverId}','${esc(serverName)}')">🚀 Install Now</button>
+        </div>`;
+    }
+
+    html += `</div>`;
+
+    // Alerts section
+    html += `
+      <div class="form-card" style="max-width:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+          <h3>🚨 Recent Alerts (${alerts.length})</h3>
+        </div>`;
+
+    if (alerts.length === 0) {
+      html += '<p class="no-data" style="text-align:center;padding:1rem">✅ No alerts — all clear</p>';
+    } else {
+      html += '<div style="display:flex;flex-direction:column;gap:0.5rem">';
+      for (const alert of alerts) {
+        const sev = (alert.severity || 'INFO').toUpperCase();
+        let sevColor, sevBg;
+        switch (sev) {
+          case 'CRITICAL': sevColor = 'var(--red)'; sevBg = 'var(--red-bg)'; break;
+          case 'HIGH': sevColor = '#ff6b6b'; sevBg = 'rgba(255,107,107,0.1)'; break;
+          case 'MEDIUM': sevColor = 'var(--yellow)'; sevBg = 'var(--yellow-bg)'; break;
+          case 'LOW': sevColor = 'var(--text-dim)'; sevBg = 'rgba(136,136,160,0.1)'; break;
+          default: sevColor = 'var(--text-muted)'; sevBg = 'rgba(136,136,160,0.05)';
+        }
+
+        html += `
+          <div style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.75rem 1rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);border-left:3px solid ${sevColor}">
+            <span style="font-size:0.65rem;font-weight:700;color:${sevColor};background:${sevBg};padding:2px 8px;border-radius:4px;flex-shrink:0;margin-top:2px">${esc(sev)}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:0.82rem;font-weight:600;margin-bottom:0.15rem">${esc(alert.category || 'Alert')}</div>
+              <div style="font-size:0.78rem;color:var(--text-dim)">${esc(alert.message || '')}</div>
+              ${alert.tool || alert.skill ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.2rem">
+                ${alert.tool ? '🔧 Tool: ' + esc(alert.tool) : ''}${alert.skill ? ' · 🧩 Skill: ' + esc(alert.skill) : ''}
+              </div>` : ''}
+            </div>
+            <div style="font-size:0.65rem;color:var(--text-muted);flex-shrink:0;white-space:nowrap">${alert.timestamp ? timeAgo(alert.timestamp) : ''}</div>
+          </div>`;
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<div class="section-header"><h2>🛡️ <span>DefenseClaw</span></h2></div><p class="error-msg">${esc(e.message)}</p>`;
+  }
+}
+
+function dcShowDetail(serverId) {
+  dcSelectedServer = serverId;
+  dcViewMode = 'detail';
+  renderDefenseClaw();
+}
+
+async function dcInstallOn(serverId, serverName) {
+  if (!confirm('Install DefenseClaw on ' + serverName + '?')) return;
+  try {
+    await api('/servers/' + serverId + '/defenseclaw/install', { method: 'POST' });
+    toast('🛡️ DefenseClaw install started on ' + serverName);
+  } catch (e) {
+    toast('Install failed: ' + e.message, 'error');
+  }
+}
+
+async function dcInstallAll() {
+  if (!confirm('Install DefenseClaw on ALL online servers?')) return;
+  try {
+    const result = await api('/fleet/defenseclaw/install-all', { method: 'POST' });
+    toast('🛡️ DefenseClaw install sent to ' + result.total_sent + ' server(s)');
+  } catch (e) {
+    toast('Install-all failed: ' + e.message, 'error');
   }
 }
 
