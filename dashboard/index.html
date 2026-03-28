@@ -7361,6 +7361,27 @@ async function renderMemory() {
   renderMemoryUI();
 }
 
+async function exportMemory() {
+  if (!selectedServer) return;
+  const el = $('memory-content');
+  if (el) el.innerHTML = '<div class="mgmt-loading">Running memory export on ' + esc(selectedServer.name) + '...</div>';
+  try {
+    await api('/servers/' + selectedServer.id + '/memory/export', { method: 'POST' });
+    toast('Memory export started — loading in 5 seconds...');
+    setTimeout(async () => {
+      try {
+        memoryData = await api('/servers/' + selectedServer.id + '/memory');
+        renderMemoryUI();
+      } catch(e) {
+        if (el) el.innerHTML = '<div class="memory-viewer-empty">Export may still be running — try refreshing in a moment.</div>';
+      }
+    }, 5000);
+  } catch(e) {
+    toast('Export failed: ' + e.message, 'error');
+    if (el) el.innerHTML = '<div class="memory-viewer-empty">Export failed: ' + esc(e.message) + '</div>';
+  }
+}
+
 async function loadAllAgentsMemory() {
   memoryAllData = {};
   const allServers = servers.filter(s => s.status === 'online');
@@ -7388,8 +7409,8 @@ function getMemoryEntries() {
       }
     }
   } else if (memoryData && memoryData.entries) {
-    const sName = servers.find(s => s.id === selectedServer)?.name || '';
-    entries = memoryData.entries.map(e => ({ ...e, _serverId: selectedServer, _serverName: sName }));
+    const sName = selectedServer?.name || '';
+    entries = memoryData.entries.map(e => ({ ...e, _serverId: selectedServer?.id, _serverName: sName }));
   }
 
   // Filter by category
