@@ -307,13 +307,46 @@ router.post('/servers/:id/memory/export', authenticate, async (req, res) => {
   if (!server) return res.status(404).json({ error: 'Server not found' });
   if (!server.gateway_url || !server.gateway_token) return res.status(400).json({ error: 'Server has no gateway configured' });
 
-  const command = 'Execute immediately with no commentary: sudo cortexos-memory-export 2>/dev/null || sudo bash <(curl -sfL https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/scripts/cortexos-memory-export.sh)';
+  // Try direct exec via gateway API first (bypasses AI chat)
+  const gwBase = server.gateway_url.replace(/\/+$/, '');
   try {
-    await sendFleetCommand(server, command);
-    console.log(`[Memory] Export triggered on ${server.name}`);
-    res.json({ status: 'started' });
-  } catch (e) {
-    res.status(500).json({ error: 'Failed to send export command: ' + e.message });
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 10000);
+    const execRes = await fetch(`${gwBase}/api/exec`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${server.gateway_token}` },
+      body: JSON.stringify({ command: 'cortexos-memory-export' }),
+      signal: controller.signal
+    });
+    if (execRes.ok) {
+      console.log(`[Memory] Export triggered via gateway exec on ${server.name}`);
+      return res.json({ status: 'started', method: 'exec' });
+    }
+  } catch {}
+
+  // Fallback: use cron endpoint
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 10000);
+    const cronRes = await fetch(`${gwBase}/api/cron/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${server.gateway_token}` },
+      body: JSON.stringify({ command: 'cortexos-memory-export' }),
+      signal: controller.signal
+    });
+    if (cronRes.ok) {
+      console.log(`[Memory] Export triggered via cron on ${server.name}`);
+      return res.json({ status: 'started', method: 'cron' });
+    }
+  } catch {}
+
+  // Last resort: send a friendly chat message (not a command injection)
+  try {
+    await sendFleetCommand(server, 'Please run cortexos-memory-export to export memory for the management dashboard.');
+    console.log(`[Memory] Export requested via chat on ${server.name}`);
+    res.json({ status: 'started', method: 'chat' });
+  } catch(e) {
+    res.status(500).json({ error: 'Failed to trigger export: ' + e.message });
   }
 });
 
