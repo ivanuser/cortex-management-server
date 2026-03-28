@@ -7468,6 +7468,14 @@ function renderMemoryUI() {
     <div class="memory-topbar">
       <h2>🧠 Memory — ${esc(serverName)}${cached}</h2>
       <div class="memory-topbar-actions">
+        <span id="memory-freshness" style="font-size:0.72rem;color:var(--text-muted)">
+          ${memoryData?.exported_at ? '🕒 ' + timeAgo(memoryData.exported_at) : ''}
+        </span>
+        <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;color:var(--text-dim);cursor:pointer">
+          <input type="checkbox" id="memory-auto-refresh" ${window._memoryAutoRefresh ? 'checked' : ''} onchange="toggleMemoryAutoRefresh(this.checked)" style="cursor:pointer">
+          🔄 Auto
+        </label>
+        <button class="btn-skills" onclick="renderMemory()">↻ Refresh</button>
         <label class="memory-all-agents-toggle ${memoryAllAgents ? 'active' : ''}">
           <input type="checkbox" ${memoryAllAgents ? 'checked' : ''} onchange="toggleMemoryAllAgents(this.checked)">
           📡 All Agents
@@ -7621,6 +7629,29 @@ function filterMemoryCategory(cat) {
   renderMemorySidebar();
   renderMemoryEntryList();
   renderMemoryViewer();
+}
+
+let _memoryRefreshInterval = null;
+function toggleMemoryAutoRefresh(enabled) {
+  window._memoryAutoRefresh = enabled;
+  if (_memoryRefreshInterval) { clearInterval(_memoryRefreshInterval); _memoryRefreshInterval = null; }
+  if (enabled) {
+    _memoryRefreshInterval = setInterval(async () => {
+      if (currentPage !== 'memory') { clearInterval(_memoryRefreshInterval); _memoryRefreshInterval = null; window._memoryAutoRefresh = false; return; }
+      try {
+        const result = await api('/servers/' + selectedServer.id + '/memory');
+        if (!result.no_data && result.exported_at !== memoryData?.exported_at) {
+          memoryData = result;
+          renderMemoryUI();
+          toast('🧠 Memory updated', 'success');
+        }
+        // Update freshness timestamp
+        const el = $('memory-freshness');
+        if (el && memoryData?.exported_at) el.textContent = '🕒 ' + timeAgo(memoryData.exported_at);
+      } catch {}
+    }, 60000); // check every 60 seconds
+    toast('🔄 Auto-refresh on — checks every minute');
+  }
 }
 
 function toggleMemoryAllAgents(checked) {
