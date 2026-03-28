@@ -3427,24 +3427,30 @@ function scanSkillSecurity() {
       <div class="modal-body" style="overflow-y:auto;flex:1;min-height:0">
         <p style="color:var(--text-dim);margin-bottom:1.25rem;font-size:0.85rem">
           Powered by <strong>Cisco AI Skill Scanner</strong>. Choose a scan type:
+          <span style="display:block;margin-top:0.5rem;font-size:0.75rem;color:var(--text-muted)">
+            <span style="color:var(--green)">●</span> Works on SKILL.md &nbsp;
+            <span style="color:var(--accent-light)">●</span> Needs Python scripts in skill &nbsp;
+            <span style="color:var(--yellow)">●</span> Needs API key
+          </span>
         </p>
         <div style="display:flex;flex-direction:column;gap:0.6rem;margin-bottom:1.25rem" id="scan-options-list">
           ${[
-            {id:'quick',    icon:'⚡', label:'Quick',             badge:'~10s · no API key', color:'var(--green)',        flags:'',                                      desc:'Static YAML/YARA patterns + bytecode + pipeline analysis. Fast baseline scan.'},
-            {id:'behavioral',id:'behavioral',icon:'🔬', label:'Behavioral',       badge:'~30s · no API key', color:'var(--yellow)',       flags:'--use-behavioral',                      desc:'Static + AST dataflow analysis. Traces taint flows, command injection, exfiltration.'},
-            {id:'overlap',  icon:'🔗', label:'Overlap Detection',  badge:'~30s · no API key', color:'var(--yellow)',       flags:'--use-behavioral --check-overlap',       desc:'Behavioral + cross-skill overlap detection for redundant or conflicting skills.'},
-            {id:'trigger',  icon:'🎯', label:'Trigger Analysis',   badge:'~20s · no API key', color:'var(--yellow)',       flags:'--use-trigger',                         desc:'Checks for vague or overly-broad skill trigger descriptions that could be hijacked.'},
-            {id:'llm',      icon:'🧠', label:'LLM Semantic',       badge:'~60s · API key',    color:'var(--accent-light)', flags:'--use-behavioral --use-llm',             desc:'Static + Behavioral + LLM semantic analysis for subtle prompt injection and logic flaws.'},
-            {id:'llm-meta', icon:'🔮', label:'LLM + Meta Filter',  badge:'~90s · API key',    color:'var(--accent-light)', flags:'--use-behavioral --use-llm --enable-meta', desc:'Full LLM scan with meta-analyzer to filter false positives. Best signal-to-noise ratio.'},
-            {id:'consensus',icon:'🗳️', label:'LLM Consensus (3x)', badge:'~3min · API key',   color:'var(--accent-light)', flags:'--use-behavioral --use-llm --llm-consensus-runs 3 --enable-meta', desc:'Runs LLM analysis 3 times, keeps only majority-agreed findings. Most accurate, slowest.'},
-            {id:'strict',   icon:'🛡️', label:'Strict Policy',      badge:'~30s · no API key', color:'var(--red)',          flags:'--policy strict',                       desc:'Applies strict scan policy preset. Fails on medium+ severity findings.'},
-            {id:'virustotal',icon:'🦠', label:'VirusTotal',         badge:'needs VT key',      color:'var(--text-muted)',   flags:'--use-virustotal',                      desc:'Hash-based malware scan against VirusTotal database. Requires VIRUSTOTAL_API_KEY on server.'},
+            {id:'quick',    icon:'⚡', label:'Quick',             badge:'~10s · no API key', color:'var(--green)',        works:'SKILL.md',        flags:'',                                      desc:'Static YAML/YARA patterns + bytecode + pipeline analysis. Works on any skill file.'},
+            {id:'behavioral',id:'behavioral',icon:'🔬', label:'Behavioral',  badge:'~30s · no API key', color:'var(--yellow)',       works:'Python scripts',  flags:'--use-behavioral',                      desc:'AST dataflow analysis. Best value when skills have .py scripts. Same as Quick on SKILL.md-only skills.'},
+            {id:'overlap',  icon:'🔗', label:'Overlap Detection',  badge:'~30s · no API key', color:'var(--yellow)',       works:'Python scripts',  flags:'--use-behavioral --check-overlap',       desc:'Cross-skill overlap detection. Useful for finding conflicting or redundant skill sets.'},
+            {id:'trigger',  icon:'🎯', label:'Trigger Analysis',   badge:'~20s · no API key', color:'var(--green)',        works:'SKILL.md',        flags:'--use-trigger',                         desc:'Checks for vague trigger descriptions in SKILL.md that could be hijacked by adversarial inputs.'},
+            {id:'llm',      icon:'🧠', label:'LLM Semantic',       badge:'~60s · API key',    color:'var(--accent-light)', works:'SKILL.md',        flags:'--use-behavioral --use-llm',             desc:'Reads SKILL.md instructions semantically — detects subtle prompt injection, scope creep, and manipulation patterns.'},
+            {id:'llm-meta', icon:'🔮', label:'LLM + Meta Filter',  badge:'~90s · API key',    color:'var(--accent-light)', works:'SKILL.md',        flags:'--use-behavioral --use-llm --enable-meta', desc:'LLM scan with false-positive filtering. Best results on SKILL.md-only skill sets.'},
+            {id:'consensus',icon:'🗳️', label:'LLM Consensus (3x)', badge:'~3min · API key',   color:'var(--accent-light)', works:'SKILL.md',        flags:'--use-behavioral --use-llm --llm-consensus-runs 3 --enable-meta', desc:'Runs LLM 3x, keeps majority-agreed findings only. Most accurate for SKILL.md content.'},
+            {id:'strict',   icon:'🛡️', label:'Strict Policy',      badge:'~30s · no API key', color:'var(--red)',          works:'SKILL.md',        flags:'--policy strict',                       desc:'Strict policy preset — fails on medium+ severity. Good for CI/CD gates.'},
+            {id:'virustotal',icon:'🦠', label:'VirusTotal',         badge:'needs VT key',      color:'var(--text-muted)',   works:'Binary files',    flags:'--use-virustotal',                      desc:'Hash-based malware scan. Only useful if skills include compiled binaries.'},
           ].map((o,i) => `
             <label style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.75rem 0.9rem;border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color 0.15s" onclick="document.getElementById('scan-type-${o.id}').checked=true;document.querySelectorAll('.scan-opt-row').forEach(e=>e.style.borderColor='var(--border)');this.style.borderColor='var(--accent)'" class="scan-opt-row" ${i===0?'style="border-color:var(--accent)"':''}>
               <input type="radio" id="scan-type-${o.id}" name="scan-type" value="${o.flags}" ${i===0?'checked':''} style="margin-top:3px;flex-shrink:0">
               <div style="flex:1;min-width:0">
                 <div style="font-weight:600;font-size:0.85rem">${o.icon} ${o.label} <span style="font-size:0.68rem;color:${o.color};font-weight:400">${o.badge}</span></div>
                 <div style="font-size:0.75rem;color:var(--text-dim);margin-top:0.15rem">${o.desc}</div>
+                <div style="font-size:0.68rem;color:var(--text-muted);margin-top:0.2rem">Works on: <span style="color:${o.works==='SKILL.md'?'var(--green)':o.works==='Python scripts'?'var(--accent-light)':'var(--text-muted)'}">${o.works}</span></div>
               </div>
             </label>`).join('')}
         </div>
