@@ -267,7 +267,7 @@ router.get('/servers/:id/memory', authenticate, async (req, res) => {
           return res.json(data);
         } catch {}
       }
-      return res.status(502).json({ error: 'memory.json not found on agent — run cortexos-memory-export first', no_data: true });
+      return res.status(200).json({ error: 'memory.json not found on agent — run cortexos-memory-export first', no_data: true, entries: [] });
     }
 
     const data = await response.json();
@@ -295,7 +295,7 @@ router.get('/servers/:id/memory', authenticate, async (req, res) => {
         return res.json(data);
       } catch {}
     }
-    res.status(502).json({ error: 'Failed to reach agent: ' + err.message });
+    res.status(200).json({ error: 'Failed to reach agent: ' + err.message, no_data: true, entries: [] });
   }
 });
 
