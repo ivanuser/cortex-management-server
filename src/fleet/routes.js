@@ -1226,9 +1226,16 @@ router.post('/servers/:id/scan-skills', authenticate, async (req, res) => {
   const os = await import('os');
 
   // Find skill-scanner venv
-  const scannerPath = process.env.HOME + '/skill-scanner-venv/bin/skill-scanner';
-  if (!fs.existsSync(scannerPath)) {
-    return res.status(500).json({ error: 'skill-scanner not installed on management server. Run: python3 -m venv ~/skill-scanner-venv && ~/skill-scanner-venv/bin/pip install cisco-ai-skill-scanner' });
+  // Check multiple possible locations (service may run as root or ihoner)
+  const possiblePaths = [
+    '/home/ihoner/skill-scanner-venv/bin/skill-scanner',
+    '/root/skill-scanner-venv/bin/skill-scanner',
+    (process.env.HOME || '/root') + '/skill-scanner-venv/bin/skill-scanner',
+    '/usr/local/bin/skill-scanner',
+  ];
+  const scannerPath = possiblePaths.find(p => fs.existsSync(p));
+  if (!scannerPath) {
+    return res.status(500).json({ error: 'skill-scanner not installed on management server. SSH to dev04 and run: python3 -m venv ~/skill-scanner-venv && ~/skill-scanner-venv/bin/pip install cisco-ai-skill-scanner' });
   }
 
   // Fetch skills from agent via proxy
