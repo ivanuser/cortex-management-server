@@ -8083,6 +8083,7 @@ function openCommandConsole(command, serverIds, label) {
         <div class="cmd-console-header-left">
           <span class="icon">🖥️</span>
           <h3>Command Console</h3>
+          <span id="cmd-console-elapsed" style="font-size:0.7rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace"></span>
         </div>
         <button class="cmd-console-close" onclick="closeCommandConsole()" title="Close">✕</button>
       </div>
@@ -8243,7 +8244,7 @@ function cmdConsoleRenderOutput() {
   switch (server.status) {
     case 'sent':
     case 'pending':
-      statusLine = `<span class="cmd-line-warn">${icon} Waiting for response…</span>`;
+      statusLine = `<span class="cmd-line-warn">${icon} Command sent — waiting for agent response...\nNote: If agent blocks command, this will time out after 120s.</span>`;
       break;
     case 'responding':
       statusLine = `<span class="cmd-line-info">${icon} Receiving response…</span>`;
@@ -8296,10 +8297,24 @@ async function cmdConsolePoll() {
   if (!cmdConsoleState || !cmdConsoleState.commandId) return;
 
   // Stop polling after 120 seconds max
-  if (Date.now() - cmdConsoleState.startedAt > 120_000) {
+  const elapsed = Date.now() - cmdConsoleState.startedAt;
+  if (elapsed > 120_000) {
+    // Mark all still-pending as timeout
+    for (const s of cmdConsoleState.servers) {
+      if (['sent', 'pending', 'responding'].includes(s.status)) {
+        s.status = 'timeout';
+        s.output = (s.output || '') + '\n⏱ No response after 120s — agent may be processing or blocked the command.';
+      }
+    }
+    cmdConsoleRenderAgents();
+    cmdConsoleRenderOutput();
+    cmdConsoleUpdateSummary();
     cmdConsoleStopPolling();
     return;
   }
+  // Update elapsed time in header
+  const elapsedEl = $('cmd-console-elapsed');
+  if (elapsedEl) elapsedEl.textContent = Math.round(elapsed / 1000) + 's';
 
   try {
     const data = await api('/fleet/command/' + cmdConsoleState.commandId + '/results');
