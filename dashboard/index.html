@@ -8028,16 +8028,31 @@ async function renderDefenseClawDetail(el) {
       <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1rem">
         Apply a named security policy to this agent. The policy controls how DefenseClaw handles commands, skills, and LLM guardrails.
       </p>
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
-        <button class="btn-skills primary" onclick="dcApplyPolicy('${serverId}','${esc(serverName)}','cortexos')">
-          🛡️ Apply CortexOS Policy
-        </button>
-        <button class="btn-skills" onclick="dcApplyPolicy('${serverId}','${esc(serverName)}','strict')">
-          🔒 Apply Strict Policy
-        </button>
-        <button class="btn-skills" onclick="dcApplyPolicy('${serverId}','${esc(serverName)}','default')">
-          ⚙️ Apply Default Policy
-        </button>
+      <div style="display:flex;flex-direction:column;gap:0.6rem;margin-bottom:1rem">
+        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.82rem;font-weight:600">🛡️ cortexos</div>
+            <div style="font-size:0.72rem;color:var(--text-dim)">Trusts management server commands. Allows cortexos-* operations. Warn on HIGH skills, block CRITICAL. Guardrail: observe.</div>
+          </div>
+          <button class="btn-skills" style="font-size:0.72rem;padding:4px 10px;flex-shrink:0" onclick="dcViewPolicy('cortexos')">👁 View</button>
+          <button class="btn-skills primary" style="font-size:0.72rem;padding:4px 10px;flex-shrink:0" onclick="dcApplyPolicy('${serverId}','${esc(serverName)}','cortexos')">Apply</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.82rem;font-weight:600">🔒 strict</div>
+            <div style="font-size:0.72rem;color:var(--text-dim)">Maximum security. Blocks HIGH and CRITICAL skill findings. Guardrail: enforce. No exceptions.</div>
+          </div>
+          <button class="btn-skills" style="font-size:0.72rem;padding:4px 10px;flex-shrink:0" onclick="dcViewPolicy('strict')">👁 View</button>
+          <button class="btn-skills" style="font-size:0.72rem;padding:4px 10px;flex-shrink:0" onclick="dcApplyPolicy('${serverId}','${esc(serverName)}','strict')">Apply</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.82rem;font-weight:600">⚙️ default</div>
+            <div style="font-size:0.72rem;color:var(--text-dim)">Standard policy. Alerts on HIGH, blocks CRITICAL. Guardrail: observe. Balanced security posture.</div>
+          </div>
+          <button class="btn-skills" style="font-size:0.72rem;padding:4px 10px;flex-shrink:0" onclick="dcViewPolicy('default')">👁 View</button>
+          <button class="btn-skills" style="font-size:0.72rem;padding:4px 10px;flex-shrink:0" onclick="dcApplyPolicy('${serverId}','${esc(serverName)}','default')">Apply</button>
+        </div>
       </div>
       ${statusData.policy ? `
       <div style="padding:0.6rem 1rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);font-size:0.78rem;color:var(--text-dim)">
@@ -8114,6 +8129,49 @@ async function dcApplyPolicy(serverId, serverName, policyName) {
   if (!confirm(`Apply "${policyName}" policy to ${serverName}?\n\nThis will:\n1. Run cortexos-update to get the latest scripts\n2. Apply the ${policyName} policy to DefenseClaw\n3. Restart the DefenseClaw service`)) return;
   const cmd = `Execute this command immediately with no commentary: sudo cortexos-update && sudo cortexos-policy-apply ${policyName}`;
   openCommandConsole(cmd, [serverId], `🛡️ DefenseClaw Policy: ${policyName} — ${serverName}`);
+}
+
+async function dcViewPolicy(policyName) {
+  const POLICY_URLS = {
+    cortexos: 'https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/policies/cortexos.yaml',
+    strict:   'https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/policies/strict.yaml',
+    default:  'https://raw.githubusercontent.com/ivanuser/cortex-server-os/main/policies/default.yaml',
+  };
+  const url = POLICY_URLS[policyName];
+
+  // Show modal immediately with loading state
+  let modal = document.getElementById('dc-policy-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'dc-policy-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:100%;max-width:700px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid var(--border)">
+        <h3 style="margin:0">📋 Policy: ${esc(policyName)}</h3>
+        <button class="btn-skills" onclick="document.getElementById('dc-policy-modal').remove()">✕ Close</button>
+      </div>
+      <div id="dc-policy-content" style="flex:1;overflow:auto;padding:1rem">
+        <p style="color:var(--text-dim)">Loading...</p>
+      </div>
+    </div>`;
+
+  try {
+    const resp = await fetch(url);
+    const content = document.getElementById('dc-policy-content');
+    if (!resp.ok) {
+      content.innerHTML = `<p style="color:var(--red)">Could not load policy file (${resp.status}). It may not exist yet.</p>`;
+      return;
+    }
+    const text = await resp.text();
+    content.innerHTML = `<pre style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--text);white-space:pre-wrap;margin:0;line-height:1.6">${esc(text)}</pre>`;
+  } catch (e) {
+    const content = document.getElementById('dc-policy-content');
+    content.innerHTML = `<p style="color:var(--red)">Failed to fetch: ${esc(e.message)}</p>`;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
