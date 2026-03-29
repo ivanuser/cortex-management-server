@@ -1215,7 +1215,26 @@ async function sendFleetCommandWithTracking(server, command, commandId, resultId
           }));
         }
 
-        // Collect assistant responses (chat messages from the agent)
+        // Collect assistant responses — event:"chat" with state:"final" has the complete message
+        // event:"chat" with state:"delta" has streaming chunks
+        if (msg.type === 'event' && msg.event === 'chat' && authenticated && commandSent) {
+          const p = msg.payload || {};
+          const content = p.message?.content?.[0]?.text || '';
+          if (content && p.state === 'final') {
+            responseCollected = content;
+            db.prepare("UPDATE command_results SET output = ?, status = 'responded', completed_at = datetime('now') WHERE id = ?")
+              .run(responseCollected, resultId);
+            console.log(`[Fleet Track] ${server.name} final response captured (${responseCollected.length} chars)`);
+            markResponded(responseCollected);
+            return;
+          } else if (content && p.state === 'delta') {
+            responseCollected = content; // keep latest delta for partial display
+            db.prepare("UPDATE command_results SET output = ?, status = 'responding' WHERE id = ?")
+              .run(responseCollected, resultId);
+          }
+        }
+
+        // OLD: chat.message event (keeping for compatibility)
         if (msg.type === 'event' && msg.event === 'chat.message' && authenticated && commandSent) {
           const chatMsg = msg.params || msg.data || {};
           if (chatMsg.role === 'assistant' || chatMsg.from === 'assistant') {
@@ -1245,7 +1264,17 @@ async function sendFleetCommandWithTracking(server, command, commandId, resultId
           }
         }
 
-        // Handle chat.complete / turn.complete events
+        // agent lifecycle end — turn is complete
+        if (msg.type === 'event' && msg.event === 'agent' && authenticated && commandSent) {
+          const p = msg.payload || {};
+          if (p.stream === 'lifecycle' && p.data?.phase === 'end' && responseCollected) {
+            console.log(`[Fleet Track] ${server.name} agent lifecycle end — marking responded`);
+            markResponded(responseCollected);
+            return;
+          }
+        }
+
+        // Handle chat.complete / turn.complete events (old format)
         if (msg.type === 'event' && (msg.event === 'chat.complete' || msg.event === 'turn.complete') && authenticated && commandSent) {
           console.log(`[Fleet] Response complete from ${server.name}`);
           clearTimeout(overallTimeout);
