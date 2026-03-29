@@ -1172,6 +1172,10 @@ async function sendFleetCommandWithTracking(server, command, commandId, resultId
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString());
+        // Log all events for debugging
+        if (msg.type === 'event') {
+          console.log(`[Fleet Track] ${server.name} event: ${msg.event}`);
+        }
 
         // Handle auth
         if (msg.type === 'res' && msg.id === 'connect' && msg.ok) {
