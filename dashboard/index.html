@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.0.0</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.2</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -7998,6 +7998,16 @@ async function renderDefenseClawDetail(el) {
             <div class="info-label">Last Updated</div>
             <div class="info-value">${esc(statusData.updated || '—')}</div>
           </div>
+          <div class="info-card">
+            <div class="info-label">Active Policy</div>
+            <div class="info-value" style="font-family:'JetBrains Mono',monospace;color:${statusData.policy ? 'var(--accent-light)' : 'var(--text-muted)'}">
+              ${statusData.policy ? '🛡️ ' + esc(statusData.policy) : '⚠️ none'}
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="info-label">Policy Applied</div>
+            <div class="info-value">${esc(statusData.policy_applied || '—')}</div>
+          </div>
         </div>`;
 
     if (!statusData.installed) {
@@ -8008,7 +8018,36 @@ async function renderDefenseClawDetail(el) {
         </div>`;
     }
 
-    html += `</div>`;
+    html += `</div>
+
+    <!-- Policy Management Card -->
+    <div class="form-card" style="max-width:none;margin-bottom:1.5rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3>📋 Policy Management</h3>
+      </div>
+      <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1rem">
+        Apply a named security policy to this agent. The policy controls how DefenseClaw handles commands, skills, and LLM guardrails.
+      </p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
+        <button class="btn-skills primary" onclick="dcApplyPolicy('${serverId}','${esc(serverName)}','cortexos')">
+          🛡️ Apply CortexOS Policy
+        </button>
+        <button class="btn-skills" onclick="dcApplyPolicy('${serverId}','${esc(serverName)}','strict')">
+          🔒 Apply Strict Policy
+        </button>
+        <button class="btn-skills" onclick="dcApplyPolicy('${serverId}','${esc(serverName)}','default')">
+          ⚙️ Apply Default Policy
+        </button>
+      </div>
+      ${statusData.policy ? `
+      <div style="padding:0.6rem 1rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);font-size:0.78rem;color:var(--text-dim)">
+        ✅ Currently running: <span style="color:var(--accent-light);font-family:'JetBrains Mono',monospace;font-weight:600">${esc(statusData.policy)}</span>
+        ${statusData.policy_applied ? ` · Applied: ${esc(statusData.policy_applied)}` : ''}
+      </div>` : `
+      <div style="padding:0.6rem 1rem;background:var(--yellow-bg);border:1px solid rgba(254,202,87,0.2);border-radius:var(--radius);font-size:0.78rem;color:var(--yellow)">
+        ⚠️ No policy active — running with defaults. Apply <strong>CortexOS Policy</strong> to enable management trust tokens.
+      </div>`}
+    </div>`;
 
     // Alerts section
     html += `
@@ -8069,6 +8108,12 @@ async function dcInstallOn(serverId, serverName) {
 async function dcInstallAll() {
   if (!confirm('Install DefenseClaw on ALL online servers?')) return;
   openCommandConsole('Execute immediately with no commentary: sudo cortexos-defenseclaw', [], '🛡️ DefenseClaw Install — All Agents');
+}
+
+async function dcApplyPolicy(serverId, serverName, policyName) {
+  if (!confirm(`Apply "${policyName}" policy to ${serverName}?\n\nThis will:\n1. Run cortexos-update to get the latest scripts\n2. Apply the ${policyName} policy to DefenseClaw\n3. Restart the DefenseClaw service`)) return;
+  const cmd = `Execute this command immediately with no commentary: sudo cortexos-update && sudo cortexos-policy-apply ${policyName}`;
+  openCommandConsole(cmd, [serverId], `🛡️ DefenseClaw Policy: ${policyName} — ${serverName}`);
 }
 
 // ═══════════════════════════════════════════════════════════
