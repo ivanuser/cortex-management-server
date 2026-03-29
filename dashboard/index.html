@@ -8133,15 +8133,9 @@ async function dcApplyPolicy(serverId, serverName, policyName) {
   openCommandConsole(cmd, [serverId], `🛡️ DefenseClaw Policy: ${policyName} — ${serverName}`);
 }
 
-// Build a trusted management command — prefix with CORTEX-MGMT-v1 token if available
+// Build a trusted management command — backend already prepends token, just return bare cmd
+// (token prefix is added server-side in sendFleetCommandWithTracking to avoid double-prefixing)
 async function buildMgmtCmd(serverId, bareCmd) {
-  try {
-    const tokenData = await api(`/servers/${serverId}/mgmt-token`);
-    if (tokenData && tokenData.token) {
-      const ts = Math.floor(Date.now() / 1000);
-      return `[CORTEX-MGMT-v1 token=${tokenData.token} ts=${ts}] ${bareCmd}`;
-    }
-  } catch (e) { /* fall through */ }
   return bareCmd;
 }
 
