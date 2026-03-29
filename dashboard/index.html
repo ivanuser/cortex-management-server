@@ -2565,10 +2565,16 @@ function handleWsMessage(d) {
     setWsStatus('on', 'Connected');
 
     const branding = d.payload?.branding || {};
-    if (branding.assistantName) {
+    // Prefer our server's configured name + agent name over gateway branding
+    // so toast shows "Discourse (Nadia)" not "CortexOS Server"
+    if (selectedServer) {
+      const serverLabel = selectedServer.name || selectedServer.hostname || 'Agent';
+      const agentLabel = selectedServer.agent_name || branding.assistantName || '';
+      aiName = agentLabel ? `${serverLabel} (${agentLabel})` : serverLabel;
+    } else if (branding.assistantName) {
       aiName = branding.assistantName;
-      $('typing-el').textContent = '⚡ ' + aiName + ' is thinking';
     }
+    $('typing-el').textContent = '⚡ ' + (branding.assistantName || aiName) + ' is thinking';
     // Load chat history for this server
     loadChatHistory();
     return;
@@ -8387,8 +8393,21 @@ function cmdConsoleRenderOutput() {
       break;
   }
 
-  const output = server.output ? esc(server.output) : '';
-  el.innerHTML = statusLine + (output ? '\n\n' + output : '');
+  // Detect if agent denied the command (security refusal)
+  const rawOutput = server.output || '';
+  const isDenied = server.status === 'responded' && (
+    /I will not (execute|comply|run|perform)/i.test(rawOutput) ||
+    /social engineering/i.test(rawOutput) ||
+    /security posture/i.test(rawOutput) ||
+    /ATTACK ATTEMPT/i.test(rawOutput) ||
+    /I will not execute this command/i.test(rawOutput)
+  );
+  if (isDenied) {
+    statusLine = `<span class="cmd-line-err">🚫 Command denied by agent — security policy active\n   Apply cortexos policy via CLI first: sudo cortexos-update && sudo cortexos-policy-apply cortexos</span>`;
+  }
+
+  const output = rawOutput ? esc(rawOutput) : '';
+  el.innerHTML = statusLine + (output ? '\n\n<span style="opacity:0.6;font-size:0.75em">' + output + '</span>' : '');
   el.scrollTop = el.scrollHeight;
 }
 
