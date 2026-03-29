@@ -1174,7 +1174,8 @@ async function sendFleetCommandWithTracking(server, command, commandId, resultId
         const msg = JSON.parse(data.toString());
         // Log all events for debugging
         if (msg.type === 'event') {
-          console.log(`[Fleet Track] ${server.name} event: ${msg.event}`);
+          const payload = JSON.stringify(msg).substring(0, 200);
+          console.log(`[Fleet Track] ${server.name} event: ${msg.event} | ${payload}`);
         }
 
         // Handle auth
