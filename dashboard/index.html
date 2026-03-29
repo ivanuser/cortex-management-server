@@ -8577,7 +8577,7 @@ async function renewToken(serverId, serverName) {
       toast('⚠️ New token generated but agent confirmation timed out. Token will activate in 60 seconds.', 'warning');
     }
 
-    loadTokenSettings();
+    const _s = await api("/mgmt-tokens/summary").catch(() => null); if (_s) { renderTokensSummary(_s, $("tokens-summary-bar")); renderTokenCards(_s, $("tokens-cards-container")); }
   } catch (e) { toast('Renew failed: ' + e.message, 'error'); }
 }
 
@@ -8588,7 +8588,8 @@ async function revokeToken2(serverId, serverName) {
     const data = await api('/servers/' + serverId + '/mgmt-token/revoke', { method: 'POST' });
     if (data.error) { toast(data.error, 'error'); return; }
     toast('Token revoked for ' + serverName);
-    loadTokenSettings();
+    const _r = await api('/mgmt-tokens/summary').catch(() => null);
+    if (_r) { renderTokensSummary(_r, $('tokens-summary-bar')); renderTokenCards(_r, $('tokens-cards-container')); }
   } catch (e) { toast('Revoke failed: ' + e.message, 'error'); }
 }
 
@@ -8597,7 +8598,15 @@ async function updateTokenPolicy(serverId, days) {
     const data = await api('/servers/' + serverId + '/mgmt-token/policy', { method: 'POST', body: JSON.stringify({ expires_days: days }) });
     if (data.error) { toast(data.error, 'error'); return; }
     toast('Token policy updated to ' + days + ' days');
-    loadTokenSettings();
+    // Refresh just the cards container, not the whole page
+    const cardsEl = $('tokens-cards-container');
+    if (cardsEl) {
+      const summary = await api('/mgmt-tokens/summary').catch(() => null);
+      if (summary) {
+        renderTokensSummary(summary, $('tokens-summary-bar'));
+        renderTokenCards(summary, cardsEl);
+      }
+    }
   } catch (e) { toast('Policy update failed: ' + e.message, 'error'); }
 }
 
