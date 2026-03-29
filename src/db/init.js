@@ -206,6 +206,22 @@ db.exec(`
     FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
   );
 
+  -- Phase 7: Management Trust Tokens
+  CREATE TABLE IF NOT EXISTS mgmt_tokens (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    expires_days INTEGER NOT NULL DEFAULT 90,
+    last_used TEXT,
+    last_renewed TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    FOREIGN KEY (server_id) REFERENCES servers(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_mgmt_tokens_server_id ON mgmt_tokens(server_id);
+  CREATE INDEX IF NOT EXISTS idx_mgmt_tokens_status ON mgmt_tokens(status);
+
   -- Phase 5: Usage Tracking
   CREATE TABLE IF NOT EXISTS usage_tracking (
     id TEXT PRIMARY KEY,

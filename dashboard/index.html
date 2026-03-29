@@ -4529,6 +4529,18 @@ async function renderSettings() {
           <div id="mgmt-update-status" style="margin-top:0.75rem;display:none"></div>
         </div>
 
+        <!-- Management Trust Tokens Section -->
+        <div class="form-card" style="max-width:none;grid-column:1/-1" id="settings-tokens-section">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+            <h3>🔑 Management Trust Tokens</h3>
+            <button class="btn-skills" onclick="loadTokenSettings()">↻ Refresh</button>
+          </div>
+          <div id="tokens-summary-bar" style="margin-bottom:1.25rem"></div>
+          <div id="tokens-cards-container">
+            <p style="color:var(--text-dim)">Loading token data...</p>
+          </div>
+        </div>
+
         <div class="form-card">
           <h3>Two-Factor Authentication</h3>
           <p style="color:var(--text-dim);font-size:0.8rem;margin-bottom:1rem">
@@ -4554,6 +4566,7 @@ async function renderSettings() {
       </div>`;
     loadMgmtVersion(); // Refresh version display after HTML is in DOM
     checkMgmtUpdate(); // Auto-check for updates
+    loadTokenSettings(); // Load trust tokens
   } catch (e) { el.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`; }
 }
 
@@ -8365,6 +8378,237 @@ function closeCommandConsole() {
   }
   cmdConsoleStopPolling();
   cmdConsoleState = null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// MANAGEMENT TRUST TOKENS (Settings page)
+// ═══════════════════════════════════════════════════════════
+let tokensDataCache = null;
+
+async function loadTokenSettings() {
+  const summaryEl = $('tokens-summary-bar');
+  const cardsEl = $('tokens-cards-container');
+  if (!summaryEl || !cardsEl) return;
+
+  cardsEl.innerHTML = '<p style="color:var(--text-dim)">Loading token data...</p>';
+
+  try {
+    const data = await api('/mgmt-tokens/summary');
+    tokensDataCache = data;
+    renderTokensSummary(data, summaryEl);
+    renderTokenCards(data, cardsEl);
+  } catch (e) {
+    cardsEl.innerHTML = '<p class="error-msg">Failed to load tokens: ' + esc(e.message) + '</p>';
+  }
+}
+
+function renderTokensSummary(data, el) {
+  const s = data.summary;
+  el.innerHTML = `
+    <div style="display:flex;gap:1.5rem;padding:0.75rem 1rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);flex-wrap:wrap">
+      <div style="font-size:0.85rem;font-weight:600;color:var(--text)">Token Health:</div>
+      <span style="display:flex;align-items:center;gap:0.3rem;font-size:0.8rem;color:var(--green)">✅ ${s.active} Active</span>
+      <span style="display:flex;align-items:center;gap:0.3rem;font-size:0.8rem;color:var(--yellow)">⚠️ ${s.expiring_soon} Expiring Soon</span>
+      <span style="display:flex;align-items:center;gap:0.3rem;font-size:0.8rem;color:var(--red)">❌ ${s.expired} Expired</span>
+      <span style="display:flex;align-items:center;gap:0.3rem;font-size:0.8rem;color:var(--text-muted)">⊘ ${s.revoked} Revoked</span>
+      ${s.no_token > 0 ? `<span style="display:flex;align-items:center;gap:0.3rem;font-size:0.8rem;color:var(--text-muted)">🔘 ${s.no_token} No Token</span>` : ''}
+    </div>`;
+}
+
+function tokenComplianceHtml(warning, daysOld, status) {
+  if (status === 'expired') return '<span style="color:var(--red);font-size:0.75rem">❌ Token expired — agents will reject management commands</span>';
+  if (status === 'revoked') return '<span style="color:var(--text-muted);font-size:0.75rem">⊘ Token revoked</span>';
+  if (status === 'none') return '<span style="color:var(--text-muted);font-size:0.75rem">🔘 No token generated yet</span>';
+  if (warning === 'critical') return '<span style="color:var(--red);font-size:0.75rem">🚨 CRITICAL: Token age exceeds DoD CMMC and NIST guidelines. Immediate rotation required.</span>';
+  if (warning === 'non_compliant') return '<span style="color:#e67e22;font-size:0.75rem">🔶 Non-compliant with NIST SP 800-63 recommendation (90-day rotation)</span>';
+  if (warning === 'approaching_limit') return '<span style="color:var(--yellow);font-size:0.75rem">⚠️ Approaching rotation threshold — consider renewing</span>';
+  return '<span style="color:var(--green);font-size:0.75rem">✅ Token active</span>';
+}
+
+function tokenStatusBadge(status) {
+  if (status === 'active') return '<span style="color:var(--green);font-weight:600">✅ Active</span>';
+  if (status === 'expired') return '<span style="color:var(--red);font-weight:600">❌ Expired</span>';
+  if (status === 'revoked') return '<span style="color:var(--text-muted);font-weight:600">⊘ Revoked</span>';
+  if (status === 'none') return '<span style="color:var(--text-muted);font-weight:600">🔘 None</span>';
+  return '<span>' + esc(status) + '</span>';
+}
+
+function renderTokenCards(data, el) {
+  if (data.servers.length === 0) {
+    el.innerHTML = '<p class="no-data">No servers in fleet. Add a server to manage tokens.</p>';
+    return;
+  }
+
+  const expiryPolicies = [
+    { days: 30, label: '30d', desc: 'Strict', note: 'recommended for classified environments' },
+    { days: 60, label: '60d', desc: 'Standard', note: 'NIST recommended' },
+    { days: 90, label: '90d', desc: 'Extended', note: '⚠️ Approaching limit' },
+    { days: 120, label: '120d', desc: 'Maximum', note: '🚨 Not recommended (non-compliant)' }
+  ];
+
+  let html = '<div style="display:grid;gap:1rem">';
+
+  for (const s of data.servers) {
+    const hasToken = s.token_status !== 'none';
+    const statusBadge = tokenStatusBadge(s.token_status);
+    const complianceHtml = tokenComplianceHtml(s.compliance_warning, s.days_old, s.token_status);
+    const remaining = s.days_remaining != null ? s.days_remaining : '—';
+    const daysOld = s.days_old != null ? s.days_old : '—';
+
+    html += `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;position:relative">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
+          <div style="display:flex;align-items:center;gap:0.75rem">
+            <span style="font-size:1.1rem">🖥️</span>
+            <strong style="font-size:0.95rem">${esc(s.server_name)}</strong>
+            <span class="status-dot ${s.server_status || 'unknown'}" style="width:8px;height:8px"></span>
+          </div>
+          ${statusBadge}
+        </div>`;
+
+    if (hasToken && s.token_status !== 'none') {
+      html += `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.75rem;margin-bottom:0.75rem;font-size:0.8rem">
+          <div>
+            <span style="color:var(--text-muted);font-size:0.68rem;text-transform:uppercase;letter-spacing:0.05em">Token</span>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;color:var(--text-dim)" id="token-preview-${s.server_id}">Loading...</div>
+          </div>
+          <div>
+            <span style="color:var(--text-muted);font-size:0.68rem;text-transform:uppercase;letter-spacing:0.05em">Expires</span>
+            <div>${s.expires_at ? new Date(s.expires_at).toLocaleDateString() : '—'} <span style="color:var(--text-muted)">(${remaining} days remaining)</span></div>
+          </div>
+          <div>
+            <span style="color:var(--text-muted);font-size:0.68rem;text-transform:uppercase;letter-spacing:0.05em">Age</span>
+            <div>${daysOld} days old <span style="color:var(--text-muted)">/ ${s.expires_days || 90} day policy</span></div>
+          </div>
+        </div>
+        <div style="margin-bottom:0.75rem">${complianceHtml}</div>
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap">
+          <span style="font-size:0.72rem;color:var(--text-muted)">Expiry policy:</span>
+          ${expiryPolicies.map(p => {
+            const isActive = (s.expires_days || 90) === p.days;
+            const warnStyle = p.days >= 120 ? 'border-color:rgba(255,107,107,0.3);color:var(--red)' : p.days >= 90 ? 'border-color:rgba(254,202,87,0.3);color:var(--yellow)' : '';
+            return `<button class="btn-ghost" style="font-size:0.68rem;padding:3px 8px;${isActive ? 'background:var(--accent-glow);border-color:var(--accent);color:var(--accent-light);font-weight:600' : warnStyle}" onclick="updateTokenPolicy('${s.server_id}',${p.days})" title="${esc(p.note)}">${p.label}${isActive ? ' ✓' : ''}</button>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+          <button class="btn-skills" style="font-size:0.75rem" onclick="renewToken('${s.server_id}','${esc(s.server_name)}')">🔄 Renew</button>
+          <button class="btn-ghost" style="font-size:0.75rem;color:var(--red);border-color:rgba(255,107,107,0.3)" onclick="revokeToken2('${s.server_id}','${esc(s.server_name)}')">❌ Revoke</button>
+          <button class="btn-ghost" style="font-size:0.75rem" onclick="copyTokenPreview('${s.server_id}')">📋 Copy Token</button>
+        </div>`;
+    } else {
+      html += `
+        <div style="text-align:center;padding:1rem">
+          <p style="color:var(--text-dim);margin-bottom:0.75rem">No management token generated for this server.</p>
+          <button class="btn-skills primary" style="font-size:0.8rem" onclick="generateToken2('${s.server_id}','${esc(s.server_name)}')">🔑 Generate Token</button>
+        </div>`;
+    }
+
+    html += '</div>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+
+  // Load token previews for each server that has a token
+  for (const s of data.servers) {
+    if (s.token_status !== 'none') {
+      loadTokenPreview(s.server_id);
+    }
+  }
+}
+
+async function loadTokenPreview(serverId) {
+  const el = document.getElementById('token-preview-' + serverId);
+  if (!el) return;
+  try {
+    const data = await api('/servers/' + serverId + '/mgmt-token');
+    if (data.token_preview) {
+      el.textContent = data.token_preview;
+    } else if (data.error) {
+      el.textContent = '—';
+    }
+  } catch {
+    el.textContent = '—';
+  }
+}
+
+async function generateToken2(serverId, serverName) {
+  try {
+    const data = await api('/servers/' + serverId + '/mgmt-token/generate', { method: 'POST', body: JSON.stringify({}) });
+    if (data.error) { toast(data.error, 'error'); return; }
+
+    // Show the full token in a modal (only shown once!)
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:560px">
+        <h3>🔑 Token Generated for ${esc(serverName)}</h3>
+        <p style="color:var(--yellow);font-size:0.82rem;margin-bottom:1rem">⚠️ This is the only time the full token will be shown. Copy it now if needed.</p>
+        <div class="token-display" style="font-size:0.72rem;word-break:break-all">${esc(data.token)}</div>
+        <button class="copy-btn" onclick="navigator.clipboard.writeText('${esc(data.token)}');toast('Token copied!')">📋 Copy Full Token</button>
+        <div style="margin-top:1rem;font-size:0.78rem;color:var(--text-dim)">
+          <div>Expires: ${new Date(data.expires_at).toLocaleDateString()}</div>
+          <div>The token has been pushed to the agent automatically.</div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-primary" style="width:auto" onclick="this.closest('.modal-overlay').remove();loadTokenSettings()">Done</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    toast('Token generated for ' + serverName);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function renewToken(serverId, serverName) {
+  if (!confirm(`Renew token for ${serverName}? This will generate a new token and push it to the agent.`)) return;
+
+  toast('🔄 Generating new token and pushing to agent...');
+
+  try {
+    const data = await api('/servers/' + serverId + '/mgmt-token/renew', { method: 'POST', body: JSON.stringify({}) });
+    if (data.error) { toast(data.error, 'error'); return; }
+
+    if (data.push_success) {
+      toast('✅ Token renewed. Both server and agent now use new token.');
+    } else {
+      toast('⚠️ New token generated but agent confirmation timed out. Token will activate in 60 seconds.', 'warning');
+    }
+
+    loadTokenSettings();
+  } catch (e) { toast('Renew failed: ' + e.message, 'error'); }
+}
+
+async function revokeToken2(serverId, serverName) {
+  if (!confirm(`Revoke token for ${serverName}? The agent will no longer accept management commands until a new token is generated.`)) return;
+
+  try {
+    const data = await api('/servers/' + serverId + '/mgmt-token/revoke', { method: 'POST' });
+    if (data.error) { toast(data.error, 'error'); return; }
+    toast('Token revoked for ' + serverName);
+    loadTokenSettings();
+  } catch (e) { toast('Revoke failed: ' + e.message, 'error'); }
+}
+
+async function updateTokenPolicy(serverId, days) {
+  try {
+    const data = await api('/servers/' + serverId + '/mgmt-token/policy', { method: 'POST', body: JSON.stringify({ expires_days: days }) });
+    if (data.error) { toast(data.error, 'error'); return; }
+    toast('Token policy updated to ' + days + ' days');
+    loadTokenSettings();
+  } catch (e) { toast('Policy update failed: ' + e.message, 'error'); }
+}
+
+async function copyTokenPreview(serverId) {
+  try {
+    const data = await api('/servers/' + serverId + '/mgmt-token');
+    if (data.token_preview) {
+      navigator.clipboard.writeText(data.token_preview);
+      toast('Token preview copied');
+    }
+  } catch (e) { toast('Failed to copy: ' + e.message, 'error'); }
 }
 
 // ═══════════════════════════════════════════════════════════
