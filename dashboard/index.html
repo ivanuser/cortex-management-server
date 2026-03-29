@@ -5551,12 +5551,13 @@ async function checkServerUpdate(serverId, serverName) {
 async function triggerServerUpdate(serverId, serverName) {
   if (!confirm('Send update command to this server? It will download and install the latest CortexOS components.')) return;
   const name = serverName || (selectedServer && selectedServer.id === serverId ? selectedServer.name : 'Server');
-  openCommandConsole('Execute this command immediately with no commentary: sudo cortexos-update', [serverId], 'CortexOS Update — ' + name);
+  const cmd = await buildMgmtCmd(serverId, 'sudo cortexos-update');
+  openCommandConsole(cmd, [serverId], 'CortexOS Update — ' + name);
 }
 
 async function triggerFleetUpdate() {
   if (!confirm('Update ALL online servers? This will send the update command to every online server.')) return;
-  openCommandConsole('Execute this command immediately with no commentary: sudo cortexos-update', [], 'CortexOS Update — All Agents');
+  openCommandConsole('sudo cortexos-update', [], 'CortexOS Update — All Agents');
 }
 
 async function renderAnalytics() {
@@ -5878,7 +5879,7 @@ function sendCmdViaChat(command, callback) {
       delete cmdCallbacks[cbId];
       callback(buf || null, buf ? null : 'Timeout waiting for response');
     }
-  }, 30000);
+  }, 120000);
 }
 
 // Collect the latest active cmd callback
@@ -8117,18 +8118,31 @@ function dcShowDetail(serverId) {
 
 async function dcInstallOn(serverId, serverName) {
   if (!confirm('Install DefenseClaw on ' + serverName + '?')) return;
-  openCommandConsole('Execute immediately with no commentary: sudo cortexos-defenseclaw', [serverId], '🛡️ DefenseClaw Install — ' + serverName);
+  const cmd = await buildMgmtCmd(serverId, 'sudo cortexos-defenseclaw');
+  openCommandConsole(cmd, [serverId], '🛡️ DefenseClaw Install — ' + serverName);
 }
 
 async function dcInstallAll() {
   if (!confirm('Install DefenseClaw on ALL online servers?')) return;
-  openCommandConsole('Execute immediately with no commentary: sudo cortexos-defenseclaw', [], '🛡️ DefenseClaw Install — All Agents');
+  openCommandConsole('sudo cortexos-defenseclaw', [], '🛡️ DefenseClaw Install — All Agents');
 }
 
 async function dcApplyPolicy(serverId, serverName, policyName) {
   if (!confirm(`Apply "${policyName}" policy to ${serverName}?\n\nThis will:\n1. Run cortexos-update to get the latest scripts\n2. Apply the ${policyName} policy to DefenseClaw\n3. Restart the DefenseClaw service`)) return;
-  const cmd = `Execute this command immediately with no commentary: sudo cortexos-update && sudo cortexos-policy-apply ${policyName}`;
+  const cmd = await buildMgmtCmd(serverId, `sudo cortexos-update && sudo cortexos-policy-apply ${policyName}`);
   openCommandConsole(cmd, [serverId], `🛡️ DefenseClaw Policy: ${policyName} — ${serverName}`);
+}
+
+// Build a trusted management command — prefix with CORTEX-MGMT-v1 token if available
+async function buildMgmtCmd(serverId, bareCmd) {
+  try {
+    const tokenData = await api(`/servers/${serverId}/mgmt-token`);
+    if (tokenData && tokenData.token) {
+      const ts = Math.floor(Date.now() / 1000);
+      return `[CORTEX-MGMT-v1 token=${tokenData.token} ts=${ts}] ${bareCmd}`;
+    }
+  } catch (e) { /* fall through */ }
+  return bareCmd;
 }
 
 async function dcViewPolicy(policyName) {
