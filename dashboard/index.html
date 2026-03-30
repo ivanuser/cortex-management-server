@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.7</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.8</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -8013,6 +8013,12 @@ async function renderDefenseClawDetail(el) {
             <div class="info-label">Service Status</div>
             <div class="info-value" style="color:${statusData.status === 'running' ? 'var(--green)' : 'var(--yellow)'}">
               ${statusData.status === 'running' ? '⚡ Running' : esc(statusData.status || '—')}
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="info-label">Gateway Connected</div>
+            <div class="info-value" style="color:${statusData.gateway_connected ? 'var(--green)' : 'var(--yellow)'}">
+              ${statusData.gateway_connected ? '✅ Connected' : '⚠️ Not connected'}
             </div>
           </div>
           <div class="info-card">
