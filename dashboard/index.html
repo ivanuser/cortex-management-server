@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.5</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.6</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -5747,9 +5747,10 @@ function loadFilesList() {
   }));
 }
 
-const KEY_FILES = ['SOUL.md', 'IDENTITY.md', 'MEMORY.md', 'TOOLS.md', 'AGENTS.md', 'HEARTBEAT.md'];
-// Extra files to always try to show even if not in OpenClaw's bootstrap list
-const EXTRA_FILES = ['MANAGEMENT_TRUST.md', 'USER.md'];
+const KEY_FILES = ['SOUL.md', 'IDENTITY.md', 'MEMORY.md', 'TOOLS.md', 'AGENTS.md', 'HEARTBEAT.md', 'USER.md'];
+// Note: OpenClaw's agents.files.get only allows BOOTSTRAP_FILE_NAMES + MEMORY_FILE_NAMES
+// Custom files like MANAGEMENT_TRUST.md cannot be fetched via that API — content lives in AGENTS.md
+const EXTRA_FILES = [];
 
 function fileIcon(name) {
   const ext = name.split('.').pop().toLowerCase();
@@ -5793,29 +5794,9 @@ function renderFileList(files, extraPresent = []) {
   $('files-list').innerHTML = html;
 }
 
-// Probe for extra files not in OpenClaw's bootstrap list
-function probeExtraFiles(callback) {
-  if (!serverWs || serverWs.readyState !== 1) { callback([]); return; }
-  const found = [];
-  let pending = EXTRA_FILES.length;
-  if (pending === 0) { callback([]); return; }
-  EXTRA_FILES.forEach(name => {
-    const id = 'files-probe-' + name + '-' + (++wsMsgN);
-    const handler = function(d) {
-      if (d.type !== 'res' || d.id !== id) return false;
-      // file exists if ok=true and file.missing is not true
-      if (d.ok && d.payload && !d.payload.file?.missing) found.push(name);
-      pending--;
-      if (pending === 0) callback(found);
-      return true;
-    };
-    addOneTimeWsHandler(handler);
-    serverWs.send(JSON.stringify({
-      type: 'req', method: 'agents.files.get', id: id,
-      params: { agentId: 'main', name }
-    }));
-  });
-}
+// Probe for extra files — OpenClaw restricts agents.files.get to bootstrap files only
+// so this is a no-op; custom files like MANAGEMENT_TRUST.md live inside AGENTS.md
+function probeExtraFiles(callback) { callback([]); }
 
 function openFile(name) {
   if (!serverWs || serverWs.readyState !== 1) return;
