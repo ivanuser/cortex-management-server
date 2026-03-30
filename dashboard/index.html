@@ -5803,7 +5803,8 @@ function probeExtraFiles(callback) {
     const id = 'files-probe-' + name + '-' + (++wsMsgN);
     const handler = function(d) {
       if (d.type !== 'res' || d.id !== id) return false;
-      if (d.ok && d.payload && !d.payload.missing) found.push(name);
+      // file exists if ok=true and file.missing is not true
+      if (d.ok && d.payload && !d.payload.file?.missing) found.push(name);
       pending--;
       if (pending === 0) callback(found);
       return true;
