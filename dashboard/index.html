@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.3</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.4</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -5746,7 +5746,7 @@ function loadFilesList() {
   }));
 }
 
-const KEY_FILES = ['SOUL.md', 'IDENTITY.md', 'MEMORY.md', 'TOOLS.md', 'AGENTS.md', 'HEARTBEAT.md'];
+const KEY_FILES = ['SOUL.md', 'IDENTITY.md', 'MEMORY.md', 'TOOLS.md', 'AGENTS.md', 'HEARTBEAT.md', 'MANAGEMENT_TRUST.md'];
 
 function fileIcon(name) {
   const ext = name.split('.').pop().toLowerCase();
@@ -7790,7 +7790,7 @@ async function saveMemoryEntry() {
 
   // Escape content for shell
   const escaped = content.replace(/'/g, "'\\''");
-  const cmd = `Execute immediately with no commentary: cat > ~/.openclaw/workspace/${path} << 'CORTEX_MEMORY_EOF'\n${content}\nCORTEX_MEMORY_EOF`;
+  const cmd = `cat > ~/.openclaw/workspace/${path} << 'CORTEX_MEMORY_EOF'\n${content}\nCORTEX_MEMORY_EOF`;
 
   try {
     await api('/fleet/command', {
