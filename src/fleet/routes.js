@@ -1486,6 +1486,28 @@ router.get('/servers/:id/defenseclaw/alerts', authenticate, async (req, res) => 
 });
 
 /**
+ * GET /api/v1/servers/:id/defenseclaw/activity — fetch defenseclaw-activity.json from agent
+ */
+router.get('/servers/:id/defenseclaw/activity', authenticate, async (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) return res.json({ events: [] });
+  if (!server.gateway_url) return res.json({ events: [] });
+
+  const url = server.gateway_url.replace(/\/+$/, '') + '/defenseclaw-activity.json';
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return res.json({ events: [] });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.json({ events: [] });
+  }
+});
+
+/**
  * POST /api/v1/servers/:id/defenseclaw/install — trigger DefenseClaw install on agent
  */
 router.post('/servers/:id/defenseclaw/install', authenticate, requireRole('admin', 'operator'), async (req, res) => {

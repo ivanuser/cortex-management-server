@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.6</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.7</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -7979,9 +7979,10 @@ async function renderDefenseClawDetail(el) {
   el.innerHTML = '<p style="color:var(--text-dim);padding:1.5rem">Loading DefenseClaw details for ' + esc(serverName) + '...</p>';
 
   try {
-    const [statusData, alertData] = await Promise.all([
+    const [statusData, alertData, activityData] = await Promise.all([
       api('/servers/' + serverId + '/defenseclaw/status'),
-      api('/servers/' + serverId + '/defenseclaw/alerts')
+      api('/servers/' + serverId + '/defenseclaw/alerts'),
+      api('/servers/' + serverId + '/defenseclaw/activity').catch(() => ({ events: [] }))
     ]);
 
     const alerts = alertData.alerts || [];
@@ -8123,6 +8124,43 @@ async function renderDefenseClawDetail(el) {
     }
 
     html += '</div>';
+
+    // Activity Log section
+    const events = activityData.events || [];
+    html += `
+      <div class="form-card" style="max-width:none;margin-top:1.5rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+          <h3>📋 Activity Log (${events.length})</h3>
+          <span style="font-size:0.72rem;color:var(--text-muted)">Last export: ${esc(activityData.exported || '—')}</span>
+        </div>`;
+
+    if (events.length === 0) {
+      html += `<p class="no-data" style="text-align:center;padding:1rem">
+        ${statusData.status === 'running' ? '✅ DefenseClaw running — no activity recorded yet. Activity appears after tool calls are intercepted.' : '⚠️ DefenseClaw not running — start service to begin logging activity.'}
+      </p>`;
+    } else {
+      html += '<div style="display:flex;flex-direction:column;gap:0.4rem;max-height:400px;overflow-y:auto">';
+      for (const ev of events.slice(0, 50)) {
+        const action = (ev.action || ev.type || 'event').toUpperCase();
+        let actionColor = 'var(--text-dim)';
+        if (action === 'ALLOW' || action === 'APPROVED') actionColor = 'var(--green)';
+        else if (action === 'BLOCK' || action === 'BLOCKED' || action === 'DENIED') actionColor = 'var(--red)';
+        else if (action === 'ALERT' || action === 'WARN') actionColor = 'var(--yellow)';
+        html += `
+          <div style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.5rem 0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);font-size:0.78rem">
+            <span style="font-size:0.65rem;font-weight:700;color:${actionColor};flex-shrink:0;min-width:50px;padding-top:1px">${esc(action)}</span>
+            <div style="flex:1;min-width:0">
+              <span style="color:var(--text)">${esc(ev.message || ev.description || ev.tool || ev.category || '')}</span>
+              ${ev.tool ? `<span style="color:var(--text-muted);margin-left:0.5rem">🔧 ${esc(ev.tool)}</span>` : ''}
+              ${ev.skill ? `<span style="color:var(--text-muted);margin-left:0.5rem">🧩 ${esc(ev.skill)}</span>` : ''}
+            </div>
+            <div style="font-size:0.65rem;color:var(--text-muted);flex-shrink:0">${ev.timestamp ? timeAgo(ev.timestamp) : ''}</div>
+          </div>`;
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+
     el.innerHTML = html;
   } catch (e) {
     el.innerHTML = `<div class="section-header"><h2>🛡️ <span>DefenseClaw</span></h2></div><p class="error-msg">${esc(e.message)}</p>`;
