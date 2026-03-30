@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.4</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.5</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -5732,7 +5732,8 @@ function loadFilesList() {
     if (d.type !== 'res' || d.id !== id) return false;
     if (d.ok && d.payload) {
       filesData = d.payload.files || d.payload || [];
-      renderFileList(filesData);
+      // Probe for extra files (MANAGEMENT_TRUST.md, USER.md) not in OpenClaw bootstrap list
+      probeExtraFiles(extraPresent => renderFileList(filesData, extraPresent));
     } else {
       $('files-list').innerHTML = '<div class="mgmt-notice"><span class="icon">❌</span>Failed to load files</div>';
     }
@@ -5746,7 +5747,9 @@ function loadFilesList() {
   }));
 }
 
-const KEY_FILES = ['SOUL.md', 'IDENTITY.md', 'MEMORY.md', 'TOOLS.md', 'AGENTS.md', 'HEARTBEAT.md', 'MANAGEMENT_TRUST.md'];
+const KEY_FILES = ['SOUL.md', 'IDENTITY.md', 'MEMORY.md', 'TOOLS.md', 'AGENTS.md', 'HEARTBEAT.md'];
+// Extra files to always try to show even if not in OpenClaw's bootstrap list
+const EXTRA_FILES = ['MANAGEMENT_TRUST.md', 'USER.md'];
 
 function fileIcon(name) {
   const ext = name.split('.').pop().toLowerCase();
@@ -5754,9 +5757,14 @@ function fileIcon(name) {
   return icons[ext] || '📄';
 }
 
-function renderFileList(files) {
-  const keyFiles = files.filter(f => KEY_FILES.includes(f.name || f));
-  const otherFiles = files.filter(f => !KEY_FILES.includes(f.name || f));
+function renderFileList(files, extraPresent = []) {
+  const allNames = files.map(f => f.name || f);
+  // Merge extra files that were found via probe
+  const extraFiles = extraPresent.filter(n => !allNames.includes(n)).map(n => ({ name: n }));
+  const allFiles = [...files, ...extraFiles];
+
+  const keyFiles = allFiles.filter(f => KEY_FILES.includes(f.name || f) || EXTRA_FILES.includes(f.name || f));
+  const otherFiles = allFiles.filter(f => !KEY_FILES.includes(f.name || f) && !EXTRA_FILES.includes(f.name || f));
 
   let html = '';
   if (keyFiles.length > 0) {
@@ -5779,10 +5787,33 @@ function renderFileList(files) {
       </div>`;
     });
   }
-  if (files.length === 0) {
+  if (allFiles.length === 0) {
     html = '<div style="padding:1.5rem;color:var(--text-muted);font-size:0.8rem;text-align:center">No files found</div>';
   }
   $('files-list').innerHTML = html;
+}
+
+// Probe for extra files not in OpenClaw's bootstrap list
+function probeExtraFiles(callback) {
+  if (!serverWs || serverWs.readyState !== 1) { callback([]); return; }
+  const found = [];
+  let pending = EXTRA_FILES.length;
+  if (pending === 0) { callback([]); return; }
+  EXTRA_FILES.forEach(name => {
+    const id = 'files-probe-' + name + '-' + (++wsMsgN);
+    const handler = function(d) {
+      if (d.type !== 'res' || d.id !== id) return false;
+      if (d.ok && d.payload && !d.payload.missing) found.push(name);
+      pending--;
+      if (pending === 0) callback(found);
+      return true;
+    };
+    addOneTimeWsHandler(handler);
+    serverWs.send(JSON.stringify({
+      type: 'req', method: 'agents.files.get', id: id,
+      params: { agentId: 'main', name }
+    }));
+  });
 }
 
 function openFile(name) {
