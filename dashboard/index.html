@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.11</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.12</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -3570,16 +3570,31 @@ async function skillInfo(name) {
     const all = [...coreSkills, ...extendedSkills];
     const skillMeta = all.find(s => s.name === name);
     const skillPath = skillMeta?.path || name;
+
+    // Try manifest path first
     try {
       const res = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-server-skills/main/' + skillPath + '/SKILL.md');
       if (res.ok) content = await res.text();
     } catch {}
-    // Fallback: try category prefixes if path didn't work
+
+    // Fallback: try category prefixes with the skill name
     if (!content) {
-      for (const prefix of ['server', 'apps', 'infra', 'security', 'cloud', 'runtime']) {
+      for (const prefix of ['server', 'apps', 'infra', 'security', 'cloud', 'runtime', 'infra/backup-disaster-recovery/../']) {
         try {
           const res = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-server-skills/main/' + prefix + '/' + name + '/SKILL.md');
           if (res.ok) { content = await res.text(); break; }
+        } catch {}
+      }
+    }
+
+    // Last resort: search manifest for any path containing a keyword from the name
+    if (!content) {
+      const keywords = name.split('-').filter(w => w.length > 3);
+      const match = all.find(s => s.path && keywords.some(k => s.path.includes(k)));
+      if (match?.path) {
+        try {
+          const res = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-server-skills/main/' + match.path + '/SKILL.md');
+          if (res.ok) content = await res.text();
         } catch {}
       }
     }
