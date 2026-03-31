@@ -1508,6 +1508,32 @@ router.get('/servers/:id/defenseclaw/activity', authenticate, async (req, res) =
 });
 
 /**
+ * GET /api/v1/servers/:id/token-verify-log — fetch token verification log from agent
+ */
+router.get('/servers/:id/token-verify-log', authenticate, async (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) return res.json({ entries: [] });
+  if (!server.gateway_url) return res.json({ entries: [] });
+
+  const url = server.gateway_url.replace(/\/+$/, '') + '/token-verify.log';
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return res.json({ entries: [] });
+    const text = await response.text();
+    const entries = text.trim().split('\n').filter(Boolean).map(line => {
+      const [timestamp, action, ...rest] = line.split(' ');
+      return { timestamp, action, details: rest.join(' ') };
+    }).reverse().slice(0, 50);
+    res.json({ entries, count: entries.length });
+  } catch (err) {
+    res.json({ entries: [] });
+  }
+});
+
+/**
  * POST /api/v1/servers/:id/defenseclaw/install — trigger DefenseClaw install on agent
  */
 router.post('/servers/:id/defenseclaw/install', authenticate, requireRole('admin', 'operator'), async (req, res) => {
@@ -2311,6 +2337,31 @@ function createTokenForServer(serverId, expiresDays = 90) {
 
   return { id, server_id: serverId, token: tokenValue, created_at: now, expires_at: expiresAt, expires_days: expiresDays, status: 'active' };
 }
+
+/**
+ * GET /api/v1/agent-token/:installToken — agent fetches its own trust token using install token
+ * Called by cortexos-token-sync during updates. Install token proves agent identity.
+ */
+router.get('/agent-token/:installToken', async (req, res) => {
+  const installToken = req.params.installToken;
+  // Find server by matching install token or gateway token
+  const server = db.prepare(
+    "SELECT s.* FROM servers s WHERE s.gateway_token = ? OR s.id IN (SELECT server_id FROM install_tokens WHERE token = ?)"
+  ).get(installToken, installToken);
+  if (!server) return res.status(200).json({ error: 'unknown_agent' });
+
+  const tokenRow = db.prepare(
+    "SELECT token, expires_at, status FROM mgmt_tokens WHERE server_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1"
+  ).get(server.id);
+  if (!tokenRow) return res.status(200).json({ error: 'no_active_token', server_name: server.name });
+
+  res.json({
+    token: tokenRow.token,
+    server_name: server.name,
+    mgmt_server: 'cortex-manage.honercloud.com',
+    expires_at: tokenRow.expires_at
+  });
+});
 
 /**
  * Helper: push trust token to an agent via fleet command
