@@ -2343,11 +2343,12 @@ function createTokenForServer(serverId, expiresDays = 90) {
  * Called by cortexos-token-sync during updates. Install token proves agent identity.
  */
 router.get('/agent-token/:installToken', async (req, res) => {
+  try {
   const installToken = req.params.installToken;
-  // Find server by matching install token or gateway token
+  // Find server by matching gateway token
   const server = db.prepare(
-    "SELECT s.* FROM servers s WHERE s.gateway_token = ? OR s.id IN (SELECT server_id FROM install_tokens WHERE token = ?)"
-  ).get(installToken, installToken);
+    "SELECT * FROM servers WHERE gateway_token = ?"
+  ).get(installToken);
   if (!server) return res.status(200).json({ error: 'unknown_agent' });
 
   const tokenRow = db.prepare(
@@ -2361,6 +2362,9 @@ router.get('/agent-token/:installToken', async (req, res) => {
     mgmt_server: 'cortex-manage.honercloud.com',
     expires_at: tokenRow.expires_at
   });
+  } catch (e) {
+    res.status(200).json({ error: 'internal_error', message: e.message });
+  }
 });
 
 /**
