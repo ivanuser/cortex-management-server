@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.9</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.10</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -3305,7 +3305,7 @@ const coreSkills = [
   { name: 'package-manager', icon: '📦', version: '0.1.0', description: 'APT/YUM package management' },
   { name: 'user-manager', icon: '👤', version: '0.1.0', description: 'User accounts & permissions' },
   { name: 'firewall-manager', icon: '🛡️', version: '0.1.0', description: 'UFW/iptables rules & ports' },
-  { name: 'backup-manager', icon: '💿', version: '0.1.0', description: 'Backup scheduling & restoration' },
+  { name: 'infra/backup-disaster-recovery', icon: '💿', version: '1.0.0', description: 'Backup scheduling, disaster recovery & restoration' },
   { name: 'cloudflare-install', icon: '☁️', version: '0.1.0', description: 'Cloudflare tunnel setup' },
   { name: 'cloudflare-ops', icon: '🔧', version: '0.1.0', description: 'Cloudflare tunnel ops & DNS' }
 ];
@@ -3397,7 +3397,7 @@ function renderSkillCard(skill, status, installedVersion) {
     ? `onclick="event.stopPropagation();installSkill('${skill.name}')"` 
     : '';
 
-  return `<div class="skill-card${hasUpdate ? ' has-update' : ''}" onclick="skillInfo('${skill.name}')">
+  return `<div class="skill-card${hasUpdate ? ' has-update' : ''}" onclick="skillInfo('${esc(skill.name)}')">
     <div class="skill-card-head">
       <span class="skill-card-icon">${skill.icon}</span>
       <span class="skill-card-version${hasUpdate ? ' outdated' : ''}">v${installedVersion || skill.version}</span>
@@ -3432,25 +3432,28 @@ async function loadGitHubManifest() {
     if (!res.ok) return;
     const manifest = await res.json();
     const skills = manifest.skills || {};
-    // Merge into extendedSkills — add any missing
-    const existingNames = new Set(extendedSkills.map(s => s.name));
-    for (const [path, info] of Object.entries(skills)) {
-      const name = path.split('/').pop();
-      if (!existingNames.has(name)) {
-        extendedSkills.push({
-          name,
-          icon: skillIconMap[name] || skillIconMap.default,
-          version: info.version || '0.1.0',
-          description: info.description || name
-        });
-      } else {
-        // Update version/description from GitHub
-        const existing = extendedSkills.find(s => s.name === name);
-        if (existing) {
-          if (info.version) existing.version = info.version;
-          if (info.description) existing.description = info.description;
-        }
-      }
+
+    // Replace extendedSkills entirely from manifest — manifest is the source of truth
+    const categoryIcons = { apps: '📱', cloud: '☁️', infra: '🏗️', runtime: '💻', security: '🔒', server: '🖥️' };
+    const newSkills = [];
+    for (const [skillPath, info] of Object.entries(skills)) {
+      const shortName = skillPath.split('/').pop();
+      const category = skillPath.split('/')[0];
+      newSkills.push({
+        name: shortName,
+        path: skillPath,
+        icon: skillIconMap[shortName] || categoryIcons[category] || skillIconMap.default,
+        version: info.version || '0.1.0',
+        description: info.description || info.title || shortName,
+        title: info.title || shortName,
+        category: category,
+        updated: info.updated || '',
+        author: info.author || 'ivanuser'
+      });
+    }
+    if (newSkills.length > 0) {
+      extendedSkills.length = 0;
+      extendedSkills.push(...newSkills);
     }
     gitHubManifestLoaded = true;
     console.log('[Skills] Loaded manifest from GitHub:', Object.keys(skills).length, 'skills');
@@ -3562,14 +3565,23 @@ async function skillInfo(name) {
     } catch { content = null; }
   }
 
-  // Fallback: fetch from GitHub
+  // Fallback: fetch from GitHub using manifest path
   if (!content) {
-    // Try different paths in the skills repo
-    for (const prefix of ['server', 'apps', 'infra', 'security', 'cloud', 'runtime']) {
-      try {
-        const res = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-server-skills/main/' + prefix + '/' + name + '/SKILL.md');
-        if (res.ok) { content = await res.text(); break; }
-      } catch {}
+    const all = [...coreSkills, ...extendedSkills];
+    const skillMeta = all.find(s => s.name === name);
+    const skillPath = skillMeta?.path || name;
+    try {
+      const res = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-server-skills/main/' + skillPath + '/SKILL.md');
+      if (res.ok) content = await res.text();
+    } catch {}
+    // Fallback: try category prefixes if path didn't work
+    if (!content) {
+      for (const prefix of ['server', 'apps', 'infra', 'security', 'cloud', 'runtime']) {
+        try {
+          const res = await fetch('https://raw.githubusercontent.com/ivanuser/cortex-server-skills/main/' + prefix + '/' + name + '/SKILL.md');
+          if (res.ok) { content = await res.text(); break; }
+        } catch {}
+      }
     }
   }
 
