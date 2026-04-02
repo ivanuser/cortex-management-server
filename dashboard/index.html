@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.13</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.14</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -3394,9 +3394,15 @@ function renderSkillCard(skill, status, installedVersion) {
   let latestVersion = skill.version;
   if (status === 'installed' && installedVersion) {
     const ghSkill = extendedSkills.find(s => s.name === skill.name);
-    if (ghSkill && ghSkill.version && ghSkill.version > installedVersion) {
-      hasUpdate = true;
-      latestVersion = ghSkill.version;
+    if (ghSkill && ghSkill.version) {
+      // Proper semver comparison
+      const cmp = compareVersions(installedVersion, ghSkill.version);
+      // Only show update if major or minor version changed (not just 0.1.0 → 1.0.0 from manifest normalization)
+      // If installed is 0.1.0 (default placeholder), don't flag as update — agent just has stale version metadata
+      if (cmp < 0 && installedVersion !== '0.1.0') {
+        hasUpdate = true;
+        latestVersion = ghSkill.version;
+      }
     }
   }
 
