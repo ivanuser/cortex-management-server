@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.12</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.13</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -1789,6 +1789,9 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 
       <div class="sidebar-section">
         <div class="sidebar-title">Administration</div>
+        <div class="nav-item" data-page="usage" onclick="navigate('usage')">
+          <span class="icon">📊</span> Usage
+        </div>
         <div class="nav-item" data-page="updates" onclick="navigate('updates')">
           <span class="icon">🔄</span> Updates
           <span class="badge-count" id="update-count" style="display:none">0</span>
@@ -2014,6 +2017,11 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 
       <!-- Users Page -->
       <!-- Updates Page -->
+      <!-- Usage Page -->
+      <div class="page" id="page-usage">
+        <div class="page-scroll" id="usage-content"></div>
+      </div>
+
       <div class="page" id="page-updates">
         <div class="page-scroll" id="updates-content"></div>
       </div>
@@ -2369,7 +2377,7 @@ function navigate(page) {
     terminal: renderTerminal, health: renderHealth, files: renderFiles,
     services: renderServices, docker: renderDocker, logs: renderLogs,
     network: renderNetwork, packages: renderPackages, cron: renderCron, compliance: renderCompliance,
-    memory: renderMemory, defenseclaw: renderDefenseClaw, updates: renderUpdates, users: renderUsers,
+    memory: renderMemory, defenseclaw: renderDefenseClaw, usage: renderUsage, updates: renderUpdates, users: renderUsers,
     settings: renderSettings, audit: renderAudit, schedules: renderSchedules,
     'incidents-page': renderIncidentsPage, analytics: renderAnalytics
   };
@@ -2900,6 +2908,9 @@ function qcmd(t) { $('chat-box').value = t; doSendChat(); }
 
 function msgHead(role) {
   if (role === 'user') {
+    if (currentUser?.avatar_data) {
+      return `<div class="msg-head"><img src="${currentUser.avatar_data}" style="width:24px;height:24px;border-radius:6px;object-fit:cover" alt="" />You</div>`;
+    }
     return `<div class="msg-head"><div class="msg-avatar-placeholder">👤</div>You</div>`;
   }
   if (selectedServer?.avatar_data) {
@@ -5465,6 +5476,126 @@ async function saveServerEdit(serverId) {
 // ═══════════════════════════════════════════════════════════
 // UPDATES PAGE
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// USAGE PAGE
+// ═══════════════════════════════════════════════════════════
+async function renderUsage() {
+  const el = $('usage-content');
+  if (!el) return;
+
+  el.innerHTML = '<p style="color:var(--text-dim);padding:1.5rem">Loading usage data across fleet...</p>';
+
+  try {
+    const servers = _serverList.length > 0 ? _serverList : await api('/servers');
+    _serverList = servers;
+
+    // Fetch usage from all online servers in parallel
+    const usagePromises = servers
+      .filter(s => s.status === 'online')
+      .map(async s => {
+        try {
+          const data = await api('/servers/' + s.id + '/usage');
+          return { server: s, usage: data };
+        } catch {
+          return { server: s, usage: null };
+        }
+      });
+    const results = await Promise.allSettled(usagePromises);
+    const usageData = results
+      .filter(r => r.status === 'fulfilled')
+      .map(r => r.value);
+
+    // Aggregate totals
+    let totalMessages = 0, totalTokensIn = 0, totalTokensOut = 0, totalCost = 0;
+    let totalToolCalls = 0, totalSessions = 0;
+    const serverCards = [];
+
+    for (const { server, usage } of usageData) {
+      if (!usage || usage.error) {
+        serverCards.push(`
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;min-width:280px">
+            <div style="font-weight:600;margin-bottom:0.5rem">${esc(server.name)}</div>
+            <div style="color:var(--text-muted);font-size:0.78rem">${usage?.error || 'No usage data available'}</div>
+          </div>`);
+        continue;
+      }
+
+      const msgs = usage.messages || usage.total_messages || 0;
+      const tokIn = usage.tokens_in || usage.input_tokens || 0;
+      const tokOut = usage.tokens_out || usage.output_tokens || 0;
+      const cost = usage.estimated_cost || usage.cost || 0;
+      const tools = usage.tool_calls || 0;
+      const sessions = usage.sessions || usage.active_sessions || 0;
+      const model = usage.model || usage.primary_model || '—';
+      const cacheHit = usage.cache_hit_rate ? (usage.cache_hit_rate * 100).toFixed(1) + '%' : '—';
+
+      totalMessages += msgs;
+      totalTokensIn += tokIn;
+      totalTokensOut += tokOut;
+      totalCost += cost;
+      totalToolCalls += tools;
+      totalSessions += sessions;
+
+      serverCards.push(`
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;min-width:280px;flex:1">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
+            <div style="font-weight:600">${esc(server.name)}</div>
+            <span style="font-size:0.65rem;color:var(--green);background:var(--green-bg);padding:2px 8px;border-radius:4px">● Online</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.78rem">
+            <div><span style="color:var(--text-muted)">Messages:</span> <strong>${msgs.toLocaleString()}</strong></div>
+            <div><span style="color:var(--text-muted)">Tool Calls:</span> <strong>${tools.toLocaleString()}</strong></div>
+            <div><span style="color:var(--text-muted)">Tokens In:</span> <strong>${tokIn.toLocaleString()}</strong></div>
+            <div><span style="color:var(--text-muted)">Tokens Out:</span> <strong>${tokOut.toLocaleString()}</strong></div>
+            <div><span style="color:var(--text-muted)">Model:</span> <strong style="font-family:'JetBrains Mono',monospace;font-size:0.7rem">${esc(model)}</strong></div>
+            <div><span style="color:var(--text-muted)">Cache Hit:</span> <strong>${cacheHit}</strong></div>
+            <div><span style="color:var(--text-muted)">Sessions:</span> <strong>${sessions}</strong></div>
+            <div><span style="color:var(--text-muted)">Est. Cost:</span> <strong>$${cost.toFixed(4)}</strong></div>
+          </div>
+          ${usage.exported ? '<div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.5rem">Last export: ' + esc(usage.exported) + '</div>' : ''}
+        </div>`);
+    }
+
+    const fmtNum = n => n > 1000000 ? (n/1000000).toFixed(1) + 'M' : n > 1000 ? (n/1000).toFixed(1) + 'K' : n.toString();
+
+    let html = `
+      <div class="section-header">
+        <h2>📊 <span>Fleet</span> Usage</h2>
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn-skills" onclick="renderUsage()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <div class="analytics-cards" style="margin-bottom:1.5rem">
+        <div class="analytics-card">
+          <div class="value accent">${fmtNum(totalMessages)}</div>
+          <div class="label">💬 Messages</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value blue">${fmtNum(totalTokensIn + totalTokensOut)}</div>
+          <div class="label">🔤 Total Tokens</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value green">${fmtNum(totalToolCalls)}</div>
+          <div class="label">🔧 Tool Calls</div>
+        </div>
+        <div class="analytics-card">
+          <div class="value ${totalCost > 0 ? 'yellow' : 'green'}">$${totalCost.toFixed(2)}</div>
+          <div class="label">💰 Est. Cost</div>
+        </div>
+      </div>
+
+      <div style="font-size:0.7rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.75rem">Per-Server Usage</div>
+      <div style="display:flex;flex-wrap:wrap;gap:1rem">
+        ${serverCards.join('')}
+      </div>`;
+
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<div class="section-header"><h2>📊 <span>Fleet</span> Usage</h2></div><p class="error-msg">${esc(e.message)}</p>`;
+  }
+}
+
 async function renderUpdates() {
   const el = $('updates-content');
   el.innerHTML = '<p style="color:var(--text-dim);padding:1.5rem">Checking for updates...</p>';

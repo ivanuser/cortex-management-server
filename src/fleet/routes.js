@@ -1508,6 +1508,28 @@ router.get('/servers/:id/defenseclaw/activity', authenticate, async (req, res) =
 });
 
 /**
+ * GET /api/v1/servers/:id/usage — fetch usage stats from agent
+ */
+router.get('/servers/:id/usage', authenticate, async (req, res) => {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
+  if (!server) return res.json({ error: 'not found' });
+  if (!server.gateway_url) return res.json({ error: 'no gateway' });
+
+  const url = server.gateway_url.replace(/\/+$/, '') + '/usage.json';
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return res.json({ error: 'not available' });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
+/**
  * GET /api/v1/servers/:id/token-verify-log — fetch token verification log from agent
  */
 router.get('/servers/:id/token-verify-log', authenticate, async (req, res) => {

@@ -152,6 +152,12 @@ async function pollAll() {
         // Update server status
         if (server.status !== 'online') {
           fireWebhookEvent('server_online', { server_id: server.id, server_name: server.name });
+          // Push notification to dashboard bell
+          try {
+            db.prepare(
+              "INSERT INTO notifications (id, message, type, created_at) VALUES (?, ?, ?, datetime('now'))"
+            ).run(crypto.randomUUID(), `✅ ${server.name} is back online`, 'info');
+          } catch {}
         }
         db.prepare(
           "UPDATE servers SET status = ?, last_seen = datetime('now') WHERE id = ?"
@@ -183,6 +189,12 @@ async function pollAll() {
             'UPDATE servers SET status = ? WHERE id = ?'
           ).run('offline', server.id);
           fireWebhookEvent('server_offline', { server_id: server.id, server_name: server.name });
+          // Push notification to dashboard bell
+          try {
+            db.prepare(
+              "INSERT INTO notifications (id, message, type, created_at) VALUES (?, ?, ?, datetime('now'))"
+            ).run(crypto.randomUUID(), `🔴 ${server.name} went offline`, 'alert');
+          } catch {}
         }
       }
     } catch (err) {
