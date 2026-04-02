@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.14</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.15</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -2582,7 +2582,7 @@ function handleWsMessage(d) {
     } else if (branding.assistantName) {
       aiName = branding.assistantName;
     }
-    $('typing-el').textContent = '⚡ ' + (branding.assistantName || aiName) + ' is thinking';
+    $('typing-el').textContent = '⚡ ' + aiName + ' is thinking';
     // Load chat history for this server
     loadChatHistory();
     return;
