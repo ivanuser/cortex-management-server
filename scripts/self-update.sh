@@ -31,9 +31,12 @@ if [ -d ".git" ]; then
 else
     echo "⚠️ Not a git repo — downloading..."
     curl -sfL "https://github.com/ivanuser/cortex-management-server/archive/main.tar.gz" -o /tmp/mgmt-update.tar.gz
-    tar xzf /tmp/mgmt-update.tar.gz --strip-components=1 -C "$INSTALL_DIR"
-    rm -f /tmp/mgmt-update.tar.gz
-    echo "✅ Code downloaded"
+    # Extract to temp dir first, then copy excluding data/ to preserve DB
+    mkdir -p /tmp/mgmt-extract
+    tar xzf /tmp/mgmt-update.tar.gz --strip-components=1 -C /tmp/mgmt-extract
+    rsync -a --exclude='data/' /tmp/mgmt-extract/ "$INSTALL_DIR/"
+    rm -rf /tmp/mgmt-extract /tmp/mgmt-update.tar.gz
+    echo "✅ Code downloaded (data/ preserved)"
 fi
 
 # Install dependencies
