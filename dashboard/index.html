@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.16</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.17</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -5531,6 +5531,7 @@ async function renderUsage() {
       const providers = usage.providers || [];
       let msgs = 0, tokIn = 0, tokOut = 0, cost = 0, tools = 0, cacheR = 0, cacheW = 0, errors = 0;
       const providerNames = [];
+      let hasProviderData = false;
 
       if (providers.length > 0) {
         for (const p of providers) {
@@ -5545,14 +5546,18 @@ async function renderUsage() {
             errors += w.errors || 0;
           }
         }
-      } else {
-        // Fallback: static usage.json format
-        msgs = usage.messages || usage.total_messages || 0;
-        tokIn = usage.tokens_in || usage.input_tokens || 0;
-        tokOut = usage.tokens_out || usage.output_tokens || 0;
-        cost = usage.estimated_cost || usage.cost || 0;
-        tools = usage.tool_calls || 0;
-        if (usage.model) providerNames.push(usage.model);
+        hasProviderData = msgs > 0 || tokIn > 0;
+      }
+
+      // If provider API returned empty (subscription/OAuth accounts), use static data
+      if (!hasProviderData) {
+        const s = usage._static || usage;
+        msgs = s.messages || s.total_messages || 0;
+        tokIn = s.tokens_in || s.input_tokens || 0;
+        tokOut = s.tokens_out || s.output_tokens || 0;
+        tools = s.tool_calls || 0;
+        if (s.model && providerNames.length === 0) providerNames.push(s.model);
+        if (s.total_sessions) totalSessions += s.total_sessions;
       }
 
       const totalTok = tokIn + tokOut;

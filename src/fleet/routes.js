@@ -1558,7 +1558,23 @@ router.get('/servers/:id/usage', authenticate, async (req, res) => {
           if (msg.type === 'res' && msg.id === 'usage') {
             clearTimeout(timeout);
             ws.close();
-            if (msg.ok) resolve(msg.payload);
+            if (msg.ok) {
+              const payload = msg.payload || {};
+              // If providers returned empty data (subscription accounts), enrich with static usage
+              const hasData = (payload.providers || []).some(p => (p.windows || []).some(w => (w.messages || w.requests || w.inputTokens || 0) > 0));
+              if (!hasData) {
+                // Fetch static usage.json to merge
+                try {
+                  const staticUrl = server.gateway_url.replace(/\/+$/, '') + '/usage.json';
+                  const staticRes = await fetch(staticUrl, { signal: AbortSignal.timeout(5000) });
+                  if (staticRes.ok) {
+                    const staticData = await staticRes.json();
+                    payload._static = staticData;
+                  }
+                } catch {}
+              }
+              resolve(payload);
+            }
             else reject(new Error(msg.error?.message || 'usage.status failed'));
           }
         } catch {}
