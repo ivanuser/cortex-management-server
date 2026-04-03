@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.15</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.16</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -5489,7 +5489,7 @@ async function renderUsage() {
   const el = $('usage-content');
   if (!el) return;
 
-  el.innerHTML = '<p style="color:var(--text-dim);padding:1.5rem">Loading usage data across fleet...</p>';
+  el.innerHTML = '<p style="color:var(--text-dim);padding:1.5rem">Loading live usage from fleet gateways...</p>';
 
   try {
     const servers = _serverList.length > 0 ? _serverList : await api('/servers');
@@ -5516,49 +5516,71 @@ async function renderUsage() {
     let totalToolCalls = 0, totalSessions = 0;
     const serverCards = [];
 
+    // Parse usage.status provider format OR static usage.json format
     for (const { server, usage } of usageData) {
       if (!usage || usage.error) {
         serverCards.push(`
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;min-width:280px">
             <div style="font-weight:600;margin-bottom:0.5rem">${esc(server.name)}</div>
-            <div style="color:var(--text-muted);font-size:0.78rem">${usage?.error || 'No usage data available'}</div>
+            <div style="color:var(--text-muted);font-size:0.78rem">${usage?.error || 'Fetching usage...'}</div>
           </div>`);
         continue;
       }
 
-      const msgs = usage.messages || usage.total_messages || 0;
-      const tokIn = usage.tokens_in || usage.input_tokens || 0;
-      const tokOut = usage.tokens_out || usage.output_tokens || 0;
-      const cost = usage.estimated_cost || usage.cost || 0;
-      const tools = usage.tool_calls || 0;
-      const sessions = usage.sessions || usage.active_sessions || 0;
-      const model = usage.model || usage.primary_model || '—';
-      const cacheHit = usage.cache_hit_rate ? (usage.cache_hit_rate * 100).toFixed(1) + '%' : '—';
+      // Handle usage.status format (providers array with windows)
+      const providers = usage.providers || [];
+      let msgs = 0, tokIn = 0, tokOut = 0, cost = 0, tools = 0, cacheR = 0, cacheW = 0, errors = 0;
+      const providerNames = [];
+
+      if (providers.length > 0) {
+        for (const p of providers) {
+          providerNames.push(p.displayName || p.provider || '?');
+          for (const w of (p.windows || [])) {
+            msgs += w.messages || w.requests || 0;
+            tokIn += w.inputTokens || w.input_tokens || 0;
+            tokOut += w.outputTokens || w.output_tokens || 0;
+            cost += w.cost || w.totalCost || 0;
+            cacheR += w.cacheReads || w.cache_read_tokens || 0;
+            cacheW += w.cacheWrites || w.cache_write_tokens || 0;
+            errors += w.errors || 0;
+          }
+        }
+      } else {
+        // Fallback: static usage.json format
+        msgs = usage.messages || usage.total_messages || 0;
+        tokIn = usage.tokens_in || usage.input_tokens || 0;
+        tokOut = usage.tokens_out || usage.output_tokens || 0;
+        cost = usage.estimated_cost || usage.cost || 0;
+        tools = usage.tool_calls || 0;
+        if (usage.model) providerNames.push(usage.model);
+      }
+
+      const totalTok = tokIn + tokOut;
+      const cacheHitPct = (cacheR + cacheW) > 0 && totalTok > 0 ? ((cacheR / totalTok) * 100).toFixed(1) + '%' : '—';
+      const avgTokPerMsg = msgs > 0 ? Math.round(totalTok / msgs).toLocaleString() : '—';
 
       totalMessages += msgs;
       totalTokensIn += tokIn;
       totalTokensOut += tokOut;
       totalCost += cost;
       totalToolCalls += tools;
-      totalSessions += sessions;
 
       serverCards.push(`
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;min-width:280px;flex:1">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;min-width:320px;flex:1">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
             <div style="font-weight:600">${esc(server.name)}</div>
             <span style="font-size:0.65rem;color:var(--green);background:var(--green-bg);padding:2px 8px;border-radius:4px">● Online</span>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.78rem">
-            <div><span style="color:var(--text-muted)">Messages:</span> <strong>${msgs.toLocaleString()}</strong></div>
-            <div><span style="color:var(--text-muted)">Tool Calls:</span> <strong>${tools.toLocaleString()}</strong></div>
-            <div><span style="color:var(--text-muted)">Tokens In:</span> <strong>${tokIn.toLocaleString()}</strong></div>
-            <div><span style="color:var(--text-muted)">Tokens Out:</span> <strong>${tokOut.toLocaleString()}</strong></div>
-            <div><span style="color:var(--text-muted)">Model:</span> <strong style="font-family:'JetBrains Mono',monospace;font-size:0.7rem">${esc(model)}</strong></div>
-            <div><span style="color:var(--text-muted)">Cache Hit:</span> <strong>${cacheHit}</strong></div>
-            <div><span style="color:var(--text-muted)">Sessions:</span> <strong>${sessions}</strong></div>
-            <div><span style="color:var(--text-muted)">Est. Cost:</span> <strong>$${cost.toFixed(4)}</strong></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem 1rem;font-size:0.78rem">
+            <div><div style="color:var(--text-muted);font-size:0.65rem">Messages</div><div style="font-size:1.1rem;font-weight:700;color:var(--accent-light)">${msgs.toLocaleString()}</div></div>
+            <div><div style="color:var(--text-muted);font-size:0.65rem">Tokens In</div><div style="font-size:1.1rem;font-weight:700;color:var(--blue)">${tokIn.toLocaleString()}</div></div>
+            <div><div style="color:var(--text-muted);font-size:0.65rem">Tokens Out</div><div style="font-size:1.1rem;font-weight:700;color:var(--green)">${tokOut.toLocaleString()}</div></div>
+            <div><div style="color:var(--text-muted);font-size:0.65rem">Cache Hit</div><div style="font-weight:600">${cacheHitPct}</div></div>
+            <div><div style="color:var(--text-muted);font-size:0.65rem">Avg Tok/Msg</div><div style="font-weight:600">${avgTokPerMsg}</div></div>
+            <div><div style="color:var(--text-muted);font-size:0.65rem">Errors</div><div style="font-weight:600;color:${errors > 0 ? 'var(--red)' : 'var(--green)'}">${errors}</div></div>
           </div>
-          ${usage.exported ? '<div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.5rem">Last export: ' + esc(usage.exported) + '</div>' : ''}
+          ${providerNames.length > 0 ? `<div style="margin-top:0.5rem;font-size:0.7rem;color:var(--text-dim)">Providers: ${providerNames.map(n => '<span style="background:var(--bg);padding:1px 6px;border-radius:3px;border:1px solid var(--border);font-family:JetBrains Mono,monospace;font-size:0.65rem">' + esc(n) + '</span>').join(' ')}</div>` : ''}
+          ${cost > 0 ? `<div style="margin-top:0.3rem;font-size:0.7rem;color:var(--yellow)">💰 Est. Cost: $${cost.toFixed(4)}</div>` : ''}
         </div>`);
     }
 

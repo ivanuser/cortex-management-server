@@ -1508,23 +1508,77 @@ router.get('/servers/:id/defenseclaw/activity', authenticate, async (req, res) =
 });
 
 /**
- * GET /api/v1/servers/:id/usage — fetch usage stats from agent
+ * GET /api/v1/servers/:id/usage — fetch live usage via WebSocket RPC (usage.status)
+ * Falls back to static usage.json if WS fails
  */
 router.get('/servers/:id/usage', authenticate, async (req, res) => {
   const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.id);
   if (!server) return res.json({ error: 'not found' });
-  if (!server.gateway_url) return res.json({ error: 'no gateway' });
+  if (!server.gateway_url || !server.gateway_token) return res.json({ error: 'no gateway' });
 
-  const url = server.gateway_url.replace(/\/+$/, '') + '/usage.json';
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    const response = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
-    if (!response.ok) return res.json({ error: 'not available' });
-    const data = await response.json();
-    res.json(data);
+    const { WebSocket } = await import('ws');
+    const gwUrl = server.gateway_url.replace(/^http/, 'ws').replace(/\/$/, '');
+
+    const usage = await new Promise((resolve, reject) => {
+      const ws = new WebSocket(gwUrl, { headers: { 'Origin': server.gateway_url } });
+      const timeout = setTimeout(() => { ws.close(); reject(new Error('timeout')); }, 15000);
+
+      ws.on('open', () => {
+        ws.send(JSON.stringify({
+          type: 'req', id: 'connect', method: 'connect',
+          params: {
+            minProtocol: 3, maxProtocol: 3,
+            client: { id: 'webchat-ui', displayName: 'Usage Fetch', version: '1.0.0', platform: 'server', mode: 'webchat' },
+            scopes: ['operator.admin'],
+            auth: { token: server.gateway_token }
+          }
+        }));
+      });
+
+      let authenticated = false;
+      ws.on('message', (data) => {
+        try {
+          const msg = JSON.parse(data.toString());
+          if (msg.type === 'event' && msg.event === 'connect.challenge') {
+            ws.send(JSON.stringify({
+              type: 'req', id: 'connect', method: 'connect',
+              params: {
+                minProtocol: 3, maxProtocol: 3,
+                client: { id: 'webchat-ui', displayName: 'Usage Fetch', version: '1.0.0', platform: 'server', mode: 'webchat' },
+                scopes: ['operator.admin'],
+                auth: { token: server.gateway_token }
+              }
+            }));
+          }
+          if (msg.type === 'res' && msg.id === 'connect' && msg.ok) {
+            authenticated = true;
+            ws.send(JSON.stringify({ type: 'req', id: 'usage', method: 'usage.status', params: {} }));
+          }
+          if (msg.type === 'res' && msg.id === 'usage') {
+            clearTimeout(timeout);
+            ws.close();
+            if (msg.ok) resolve(msg.payload);
+            else reject(new Error(msg.error?.message || 'usage.status failed'));
+          }
+        } catch {}
+      });
+
+      ws.on('error', (err) => { clearTimeout(timeout); reject(err); });
+      ws.on('close', () => { clearTimeout(timeout); });
+    });
+
+    res.json(usage);
   } catch (err) {
+    // Fallback to static usage.json
+    try {
+      const url = server.gateway_url.replace(/\/+$/, '') + '/usage.json';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (response.ok) return res.json(await response.json());
+    } catch {}
     res.json({ error: err.message });
   }
 });

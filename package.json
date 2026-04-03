@@ -1,6 +1,6 @@
 {
   "name": "cortex-management-server",
-  "version": "1.9.15",
+  "version": "1.9.16",
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
