@@ -2277,7 +2277,7 @@ function renderNotifList() {
     const timeAgo = getTimeAgo(n.created_at);
     return `<div class="notif-item ${isUnread ? 'unread' : ''}" onclick="markNotifRead('${n.id}')">
       <div class="notif-content">
-        <div class="notif-server">${escHtml(n.server_name || 'Unknown server')} <span class="notif-type-badge ${n.type}">${n.type}</span></div>
+        <div class="notif-server"><span class="notif-type-badge ${n.type}">${n.type}</span></div>
         <div class="notif-message">${escHtml(n.message || '')}</div>
         <div class="notif-time">${timeAgo}</div>
       </div>
