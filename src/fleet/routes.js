@@ -1559,21 +1559,7 @@ router.get('/servers/:id/usage', authenticate, async (req, res) => {
             clearTimeout(timeout);
             ws.close();
             if (msg.ok) {
-              const payload = msg.payload || {};
-              // If providers returned empty data (subscription accounts), enrich with static usage
-              const hasData = (payload.providers || []).some(p => (p.windows || []).some(w => (w.messages || w.requests || w.inputTokens || 0) > 0));
-              if (!hasData) {
-                // Fetch static usage.json to merge
-                try {
-                  const staticUrl = server.gateway_url.replace(/\/+$/, '') + '/usage.json';
-                  const staticRes = await fetch(staticUrl, { signal: AbortSignal.timeout(5000) });
-                  if (staticRes.ok) {
-                    const staticData = await staticRes.json();
-                    payload._static = staticData;
-                  }
-                } catch {}
-              }
-              resolve(payload);
+              resolve(msg.payload || {});
             }
             else reject(new Error(msg.error?.message || 'usage.status failed'));
           }
@@ -1583,6 +1569,16 @@ router.get('/servers/:id/usage', authenticate, async (req, res) => {
       ws.on('error', (err) => { clearTimeout(timeout); reject(err); });
       ws.on('close', () => { clearTimeout(timeout); });
     });
+
+    // If providers returned empty (subscription accounts), merge static usage
+    const hasData = (usage.providers || []).some(p => (p.windows || []).some(w => (w.messages || w.requests || w.inputTokens || 0) > 0));
+    if (!hasData) {
+      try {
+        const staticUrl = server.gateway_url.replace(/\/+$/, '') + '/usage.json';
+        const staticRes = await fetch(staticUrl, { signal: AbortSignal.timeout(5000) });
+        if (staticRes.ok) usage._static = await staticRes.json();
+      } catch {}
+    }
 
     res.json(usage);
   } catch (err) {
