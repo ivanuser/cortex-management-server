@@ -1664,7 +1664,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   <div class="topbar">
     <div class="topbar-brand">
       <div class="topbar-icon">🧠</div>
-      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.17</span></div>
+      <div class="topbar-title"><span>Cortex</span>OS Management <span class="topbar-version" id="topbar-version">v1.9.18</span></div>
     </div>
     <div class="topbar-right">
       <div class="notif-wrapper" id="notif-wrapper">
@@ -5527,37 +5527,35 @@ async function renderUsage() {
         continue;
       }
 
-      // Handle usage.status format (providers array with windows)
-      const providers = usage.providers || [];
+      // Handle sessions.usage format (sessions array with per-session token counts)
+      const sessions = usage.sessions || [];
       let msgs = 0, tokIn = 0, tokOut = 0, cost = 0, tools = 0, cacheR = 0, cacheW = 0, errors = 0;
       const providerNames = [];
-      let hasProviderData = false;
+      const modelSet = new Set();
 
-      if (providers.length > 0) {
-        for (const p of providers) {
-          providerNames.push(p.displayName || p.provider || '?');
-          for (const w of (p.windows || [])) {
-            msgs += w.messages || w.requests || 0;
-            tokIn += w.inputTokens || w.input_tokens || 0;
-            tokOut += w.outputTokens || w.output_tokens || 0;
-            cost += w.cost || w.totalCost || 0;
-            cacheR += w.cacheReads || w.cache_read_tokens || 0;
-            cacheW += w.cacheWrites || w.cache_write_tokens || 0;
-            errors += w.errors || 0;
-          }
+      if (sessions.length > 0) {
+        for (const s of sessions) {
+          msgs += (s.messages || 0);
+          tokIn += (s.inputTokens || s.input || 0);
+          tokOut += (s.outputTokens || s.output || 0);
+          cacheR += (s.cacheReadTokens || s.cacheRead || 0);
+          cacheW += (s.cacheWriteTokens || s.cacheWrite || 0);
+          cost += (s.cost?.total || s.totalCost || 0);
+          tools += (s.toolCalls || s.tools || 0);
+          errors += (s.errors || 0);
+          if (s.model) modelSet.add(s.model);
         }
-        hasProviderData = msgs > 0 || tokIn > 0;
-      }
-
-      // If provider API returned empty (subscription/OAuth accounts), use static data
-      if (!hasProviderData) {
-        const s = usage._static || usage;
-        msgs = s.messages || s.total_messages || 0;
-        tokIn = s.tokens_in || s.input_tokens || 0;
-        tokOut = s.tokens_out || s.output_tokens || 0;
-        tools = s.tool_calls || 0;
-        if (s.model && providerNames.length === 0) providerNames.push(s.model);
-        if (s.total_sessions) totalSessions += s.total_sessions;
+        totalSessions += sessions.length;
+        modelSet.forEach(m => providerNames.push(m));
+      } else {
+        // Fallback to static usage.json or _static
+        const st = usage._static || usage;
+        msgs = st.messages || st.total_messages || 0;
+        tokIn = st.tokens_in || st.input_tokens || 0;
+        tokOut = st.tokens_out || st.output_tokens || 0;
+        tools = st.tool_calls || 0;
+        if (st.model) providerNames.push(st.model);
+        if (st.total_sessions) totalSessions += st.total_sessions;
       }
 
       const totalTok = tokIn + tokOut;

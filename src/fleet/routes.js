@@ -1553,7 +1553,8 @@ router.get('/servers/:id/usage', authenticate, async (req, res) => {
           }
           if (msg.type === 'res' && msg.id === 'connect' && msg.ok) {
             authenticated = true;
-            ws.send(JSON.stringify({ type: 'req', id: 'usage', method: 'usage.status', params: {} }));
+            // Fetch session-based usage (has real token counts from API responses)
+            ws.send(JSON.stringify({ type: 'req', id: 'usage', method: 'sessions.usage', params: { days: 30, limit: 1000, includeContextWeight: true } }));
           }
           if (msg.type === 'res' && msg.id === 'usage') {
             clearTimeout(timeout);
